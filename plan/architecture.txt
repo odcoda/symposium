@@ -1,0 +1,44 @@
+implement the client in react
+
+back end: use whatever language/framework you think is easiest.
+back end is just crud wrappers around the db. almost all the
+action is in the front end.
+
+support multiple clients with a very lightweight server
+- server requires authentication (use Clerk:
+  https://clerk.com/docs/react/getting-started/quickstart)
+- all settings and content get synced from server on startup
+- when user changes any settings or content, automatically sync them to server
+
+server stores all data in a simple sql database
+
+can straightforwardly sync from server db down to local fs state with cli tool
+- this tool should run directly on the server with db access
+- dump settings in json format for import/export
+- dump content in natural hierarchical format by project
+
+local cli tool should also be able to run the entire application in "CLI mode"
+(where it makes edits and comments directly on the local filesystem)
+but don't worry about that for now.
+
+each user has their own settings and content; sharing is not supported
+
+settings:
+- global conversation settings
+- models/personalities in the chat
+- personalities, their parameters, and their basic conversational settings
+  (eagerness, brevity, views of other participants, etc)
+
+content:
+- conversation histories
+- memory files of the personalities, and their histories
+- files, their contents, and their histories
+- file edits and proposed changes
+
+to query LLMs, use openrouter. (Eventually we'll support others but stick
+to this for simplicity).
+
+use openrouter oauth https://openrouter.ai/docs/use-cases/oauth-pkce
+to avoid needing to mess around with storing api keys
+send all LLM requests directly from the front-end; the back end only exists
+as a persistent store of settings and content

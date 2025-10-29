@@ -1,0 +1,24 @@
+some brief notes on how conversations should work
+- Be sure to ask the correct LLM each turn
+  (we'll experiment with different algorithms, but probably a random choice with
+  some penalty based on who's recently said the most will give reasonable results).
+- To make the conversation go faster, implement some dynamism where
+  we can have up to N requests in flight and for each request we just send the full
+  conversation that we know about at the time we send it
+  - this can even allow conversation participants to interrupt each other partway through
+  their streaming responses!
+  - for dynamism to work well there should probably be some configurable delay in
+    between sending each request so they don't all bunch together
+  - there should probably be some overall message "response rate" / "typing
+    speed" and some kind of PID-controller-ish thing that throttles the LLMs a bit
+    if they're talking way too much
+- transform the conversation from the history so that all messages look like
+  they came from the user or from the assistant (depending on settings), but add
+  tags so the new model doesn't get lost
+- always prepend the correct system prompt and memory files for this
+  participant. try to make prompt caching work ok.
+- if the conversation is general, don't worry about tools
+- if the conversation is about a specific document, expose tools to allow the
+  participants to read, comment, edit, and reply to comments. We'll probably also want
+  some brief hints in the system prompt to tell it what's outstanding for it but
+  we can worry about that later

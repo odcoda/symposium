@@ -1,0 +1,29 @@
+This is an application for having in-depth discussions and collaborations with multiple
+LLM personalities on specific projects. The projects are made out of files which we are
+working on together. Think of it as a combination between multi-LLM group chat and Google docs.
+
+there are a few ways for the user to interact within the application
+(1) messaging in chat. the chat should look just like a standard group DM where
+  each LLM is sending messages. Note that the user can also send messages.
+  - there should be large buttons to start and stop the chat. When the chat is
+    stopped, all LLM requests are canceled and no new requests are sent.
+(2) modifying the personalities. Each personality consists of a model (e.g. claude
+  sonnet 4.5, kimi k2, etc), parameters for the model, and a system prompt.
+  There are also some settings to control how to use the model in conversations
+  - there should be sliders for the large knobs (eagerness, temperature,
+    reasoning, etc), a drop-down for the model name, and a box for the prompt
+  (e.g. how eagerly to jump in, how responsive it is to its "name", etc).
+(3) editing a file. this should be a standard web editing interface, like
+  Gmail or Google docs. It can be plain text only. There will be comments and proposed edits
+  to these documents from the LLMs.
+  - there should be highlights around the places with comments, and clicking on
+    them opens the respective comments
+
+see the "mockup 1.png" for an illustration of how these flows could look on desktop and on mobile
+
+note that this is not an exhaustive list of ui elements, there will also be other types of things, but these are the main ones
+
+on mobile only one of the 3 methods is visible at a time for screen space. the conversation screen is the main
+one with navigation to the other two
+
+the navigation lists the conversations, projects / files within projects, and personalities
