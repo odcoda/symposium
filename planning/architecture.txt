@@ -1,4 +1,6 @@
-implement the client in react
+implement the client in react + typescript. don't use
+
+db: use postgres. don't use orm, keep it simple
 
 back end: use whatever language/framework you think is easiest.
 back end is just crud wrappers around the db. almost all the
