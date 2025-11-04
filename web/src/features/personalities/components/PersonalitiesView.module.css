@@ -1,0 +1,130 @@
+.container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.headerTitle {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.addButton {
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  background: var(--surface-elevated);
+  padding: 0.45rem 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.addButton:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  background: var(--surface-secondary);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.deleteButton {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.5rem;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.deleteButton:hover {
+  color: var(--accent-strong);
+  background: var(--surface-highlight);
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.fieldLabel {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.textInput,
+.selectInput,
+.textArea {
+  width: 100%;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-elevated);
+  padding: 0.5rem 0.75rem;
+  color: inherit;
+  font: inherit;
+}
+
+.textArea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.rangeInput {
+  width: 100%;
+}
+
+.toggleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.toggleRow input[type='checkbox'] {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.sliderMeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
