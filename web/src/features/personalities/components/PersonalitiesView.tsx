@@ -130,15 +130,6 @@ const PersonalityCard = ({ personality }: { personality: Personality }) => {
           <span>Proactive</span>
         </div>
       </div>
-
-      <div className={styles.toggleRow}>
-        <span className={styles.fieldLabel}>Allow automatic replies</span>
-        <input
-          type="checkbox"
-          checked={personality.autoRespond}
-          onChange={(event) => updateField('autoRespond', event.target.checked)}
-        />
-      </div>
     </article>
   )
 }

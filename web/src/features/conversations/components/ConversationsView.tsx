@@ -32,8 +32,8 @@ const getAuthorName = (
     return 'System'
   }
 
-  if (message.authorRole === 'personality') {
-    const personality = personalities[message.personalityId ?? message.authorId]
+  if (message.authorRole === 'assistant') {
+    const personality = personalities[message.authorId]
     return personality?.name ?? 'Personality'
   }
 

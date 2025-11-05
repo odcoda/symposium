@@ -1,6 +1,6 @@
 export type AppView = 'conversations' | 'personalities'
 
-export type AuthorRole = 'user' | 'personality' | 'system'
+export type Role = 'user' | 'assistant' | 'system'
 
 export type MessageStatus = 'complete' | 'streaming' | 'error' | 'cancelled'
 
@@ -8,10 +8,9 @@ export interface Message {
   id: string
   conversationId: string
   authorId: string
-  authorRole: AuthorRole
+  authorRole: Role
   content: string
   createdAt: string
-  personalityId?: string
   status: MessageStatus
 }
 
@@ -23,8 +22,6 @@ export interface Personality {
   prompt: string
   temperature: number
   eagerness: number
-  memoryNotes: string[]
-  autoRespond: boolean
   color: string
   createdAt: string
   updatedAt: string
@@ -36,7 +33,6 @@ export interface Conversation {
   participantIds: string[]
   messageIds: string[]
   activePersonalityIds: string[]
-  pinnedMemoryIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -63,7 +59,7 @@ export type RequestStatus = 'queued' | 'in-flight' | 'completed' | 'cancelled' |
 export interface RequestQueueItem {
   id: string
   conversationId: string
-  personalityId: string
+  authorId: string
   messageId: string
   enqueuedAt: number
   status: RequestStatus

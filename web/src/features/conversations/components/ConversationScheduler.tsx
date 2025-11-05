@@ -62,12 +62,12 @@ const appendPersonalityMessage = (
 ) => {
   const state = useAppStore.getState()
   const { appendMessage, updateMessage, removeQueueItem } = state.actions
-  const personality = state.personalities[request.personalityId]
+  const personality = state.personalities[request.authorId]
   const now = new Date().toISOString()
 
   const messageId = appendMessage(request.conversationId, {
-    authorId: personality?.id ?? request.personalityId,
-    authorRole: 'personality',
+    authorId: request.authorId,
+    authorRole: 'assistant',
     content,
     createdAt: now,
     personalityId: personality?.id,
@@ -112,7 +112,7 @@ export const ConversationScheduler = () => {
           return
         }
 
-        const personality = useAppStore.getState().personalities[request.personalityId]
+        const personality = useAppStore.getState().personalities[request.authorId]
         if (!personality) {
           failRequest(request, 'Personality not found')
           return
@@ -130,11 +130,11 @@ export const ConversationScheduler = () => {
             return { role: 'user', content: message.content }
           }
 
-          if (message.authorRole === 'personality') {
+          if (message.authorRole === 'assistant') {
             return {
               role: 'assistant',
               content: message.content,
-              name: personalities[message.personalityId ?? '']?.name ?? undefined,
+              name: personalities[message.authorId ?? '']?.name ?? undefined,
             }
           }
 

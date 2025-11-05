@@ -61,7 +61,6 @@ type CreatePersonalityInput = {
   prompt?: string
   temperature?: number
   eagerness?: number
-  memoryNotes?: string[]
   autoRespond?: boolean
   color?: string
 }
@@ -116,8 +115,6 @@ const createInitialState = (): BaseState => {
     prompt: 'You are a helpful collaborator who reasons carefully and communicates succinctly.',
     temperature: 0.6,
     eagerness: 0.5,
-    memoryNotes: [],
-    autoRespond: true,
     color: '#6366f1',
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -130,10 +127,9 @@ const createInitialState = (): BaseState => {
     id: defaultMessageId,
     conversationId: defaultConversationId,
     authorId: defaultPersonality.id,
-    authorRole: 'personality',
+    authorRole: 'assistant',
     content: 'Welcome to Symposium! Start a conversation or customise personalities to get going.',
     createdAt: timestamp,
-    personalityId: defaultPersonality.id,
     status: 'complete',
   }
 
@@ -143,7 +139,6 @@ const createInitialState = (): BaseState => {
     participantIds: ['user', defaultPersonality.id],
     messageIds: [defaultMessageId],
     activePersonalityIds: [defaultPersonality.id],
-    pinnedMemoryIds: [],
     createdAt: timestamp,
     updatedAt: timestamp,
   }
@@ -245,7 +240,6 @@ export const useAppStore = create<AppState>()(
               participantIds: input?.participantIds ?? [],
               messageIds: [],
               activePersonalityIds: input?.activePersonalityIds ?? [],
-              pinnedMemoryIds: [],
               createdAt: now,
               updatedAt: now,
             }
@@ -316,7 +310,6 @@ export const useAppStore = create<AppState>()(
               authorRole: input.authorRole,
               content: input.content,
               createdAt,
-              personalityId: input.personalityId,
               status,
             }
 
@@ -375,8 +368,6 @@ export const useAppStore = create<AppState>()(
               prompt: input?.prompt ?? '',
               temperature: input?.temperature ?? 0.7,
               eagerness: input?.eagerness ?? 0.5,
-              memoryNotes: input?.memoryNotes ?? [],
-              autoRespond: input?.autoRespond ?? true,
               color: input?.color ?? '#14b8a6',
               createdAt: now,
               updatedAt: now,
@@ -479,7 +470,7 @@ export const useAppStore = create<AppState>()(
                     {
                       id,
                       conversationId: input.conversationId,
-                      personalityId: input.personalityId,
+                      authorId: input.authorId,
                       messageId: input.messageId,
                       enqueuedAt,
                       status,

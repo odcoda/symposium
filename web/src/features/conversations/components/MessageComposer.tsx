@@ -12,7 +12,6 @@ type MessageComposerProps = {
 export const MessageComposer = ({ conversationId }: MessageComposerProps) => {
   const [content, setContent] = useState('')
   const conversation = useAppStore((state) => state.conversations[conversationId])
-  const personalities = useAppStore((state) => state.personalities)
   const appendMessage = useAppStore((state) => state.actions.appendMessage)
   const queueRequest = useAppStore((state) => state.actions.queueRequest)
 
@@ -24,25 +23,20 @@ export const MessageComposer = ({ conversationId }: MessageComposerProps) => {
       return
     }
 
+    const authorId = 'user'
+
     const messageId = appendMessage(conversationId, {
-      authorId: 'user',
+      authorId,
       authorRole: 'user',
       content: trimmedContent,
       status: 'complete',
     })
 
     if (messageId && conversation) {
-      conversation.activePersonalityIds.forEach((personalityId) => {
-        const personality = personalities[personalityId]
-        if (!personality?.autoRespond) {
-          return
-        }
-
-        queueRequest({
-          conversationId,
-          personalityId,
-          messageId,
-        })
+      queueRequest({
+        conversationId,
+        authorId,
+        messageId,
       })
     }
 
