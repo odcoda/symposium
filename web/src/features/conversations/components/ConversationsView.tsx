@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { useAppStore } from '@/stores/app-store'
 import type { Conversation, Message, Personality } from '@/types'
 
+import { MessageComposer } from './MessageComposer'
 import styles from './ConversationsView.module.css'
 
 const formatTimestamp = (iso: string) => {
@@ -52,6 +53,7 @@ export const ConversationsView = () => {
   const personalities = useAppStore((state) => state.personalities)
   const activeConversationId = useAppStore((state) => state.activeConversationId)
   const { setActiveConversation, createConversation } = useAppStore((state) => state.actions)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   const conversationList = useMemo(() => {
     return Object.values(conversations).sort((a, b) =>
@@ -72,6 +74,14 @@ export const ConversationsView = () => {
       .map((id) => messages[id])
       .filter((message): message is Message => Boolean(message))
   }, [activeConversation, messages])
+
+  useEffect(() => {
+    if (!messagesEndRef.current) {
+      return
+    }
+
+    messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [activeConversation?.id, activeMessages.length])
 
   const handleCreateConversation = () => {
     const newConversationId = createConversation({
@@ -128,22 +138,26 @@ export const ConversationsView = () => {
                 {summariseParticipants(activeConversation, personalities)}
               </span>
             </div>
-            <div className={styles.messages}>
-              {activeMessages.map((message) => (
-                <article key={message.id} className={styles.messageCard}>
-                  <header className={styles.messageHeader}>
-                    <span className={styles.messageAuthor}>
-                      {getAuthorName(message, personalities)}
-                    </span>
-                    <span className={styles.messageTimestamp}>{formatTimestamp(message.createdAt)}</span>
-                  </header>
-                  <p>{message.content}</p>
-                  <span className={styles.messageStatus}>{message.status}</span>
-                </article>
-              ))}
-              {activeMessages.length === 0 ? (
-                <div className={styles.emptyState}>No messages yet. Start the conversation!</div>
-              ) : null}
+            <div className={styles.conversationBody}>
+              <div className={styles.messages}>
+                {activeMessages.map((message) => (
+                  <article key={message.id} className={styles.messageCard}>
+                    <header className={styles.messageHeader}>
+                      <span className={styles.messageAuthor}>
+                        {getAuthorName(message, personalities)}
+                      </span>
+                      <span className={styles.messageTimestamp}>{formatTimestamp(message.createdAt)}</span>
+                    </header>
+                    <p>{message.content}</p>
+                    <span className={styles.messageStatus}>{message.status}</span>
+                  </article>
+                ))}
+                {activeMessages.length === 0 ? (
+                  <div className={styles.emptyState}>No messages yet. Start the conversation!</div>
+                ) : null}
+                <div ref={messagesEndRef} />
+              </div>
+              <MessageComposer conversationId={activeConversation.id} />
             </div>
           </>
         ) : (

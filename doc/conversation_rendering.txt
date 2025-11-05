@@ -1,0 +1,18 @@
+- anytime a message fragment is sent back from an LLM provider
+  - note that we should stream in replies as they appear. This isn't exactly
+    how chat applications work but we can continue streaming into a single bubble to keep the UI
+    from being too ugly. So each LLM response gets rendered as a single message in the
+    conversation history, no matter how many streaming chunks it comes back in.
+  - if multiple LLM requests are streaming back at the same time, we should
+    support streaming into multiple bubbles at the same time. (Just sort the bubbles by the
+    order in which the first chunk in them appeared).
+  - if we allow models to reply to each others' fragments, however, then this
+    rendering is misleading. This case is complex and we should think
+    about what a sane way to render it is. don't worry about that case for now, just
+    keep each response streaming into its own bubble.
+- anytime a reasoning fragment is sent back from an LLM provider
+  - similarly, we should stream in reasoning as it appears
+  - but note that models cannot see each others' reasoning traces (that would
+    be mean!) so they should render slightly differently in the conversation history
+    so the user can tell that they're reasoning
+  - again note that multiple streams might be coming back at the same time

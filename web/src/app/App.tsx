@@ -1,4 +1,5 @@
 import { ConversationsView } from '@/features/conversations/components/ConversationsView'
+import { ConversationScheduler } from '@/features/conversations/components/ConversationScheduler'
 import { PersonalitiesView } from '@/features/personalities/components/PersonalitiesView'
 import { SettingsModal } from '@/features/settings/components/SettingsModal'
 import { useAppStore } from '@/stores/app-store'
@@ -27,6 +28,7 @@ function App() {
 
   return (
     <div className={styles.app}>
+      <ConversationScheduler />
       <header className={styles.header}>
         <h1 className={styles.brand}>Symposium</h1>
         <nav className={styles.nav} aria-label="Primary">

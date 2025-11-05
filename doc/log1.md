@@ -88,3 +88,61 @@ Here’s a developer-friendly loop using the tooling we set up:
 
   That’s it: dev server for iteration, lint/type/test for checks, build + preview + screenshot when you need to validate the
   production bundle. Add tests and Playwright scenarios as features grow, and we can expand the scripts accordingly.
+
+### Composer
+
+Added a real message composer to the Conversations workspace so the user can submit messages into the local store.
+
+  - Introduced MessageComposer with send button, enter-to-send shortcut, character counter, and disabled state when empty (web/
+  src/features/conversations/components/MessageComposer.tsx:1 and .module.css:1).
+  - Embedded the composer beneath the message list, wrapped the body to allow scrolling + composer slots, and auto-
+  scroll to the latest message via useEffect (web/src/features/conversations/components/ConversationsView.tsx:1,
+  ConversationsView.module.css:1).
+  - Updated layout spacing and ensured smooth scroll behavior with a sentinel div.
+  - Refreshed tooling output: npm run lint, npm run typecheck, npm run test (pass), npm run build.
+  - Captured a new preview screenshot with Playwright (web/artifacts/preview-composer.png) showing the composer in the UI.
+
+  Next steps: 1) Wire composer actions into a scheduler/LLM request queue so messages can trigger responses. 2) Add basic tests
+  around store mutations (appendMessage) and the composer behavior (component test with Testing Library).
+
+### Personalities bug fix
+
+Fixed the crash when switching to “Personalities.” The issue came from subscribing to Object.values(state.personalities)
+  directly inside Zustand’s selector, which returns a new array on every render and triggered an infinite update loop. I now
+  select the dictionary (state.personalities) and memoize the derived array with useMemo, so the selector stays referentially
+  stable (web/src/features/personalities/components/PersonalitiesView.tsx:1). Lint/type/test all pass, npm run build succeeds,
+  and artifacts/preview-personalities.png shows the view working. You can freely toggle between Conversations and Personalities
+  without the app disappearing. Ready to proceed with the next feature whenever you are.
+
+### Prototype composer
+
+Composer messages now kick off automated follow-ups: after sending, each active, auto-responding personality is queued for a
+  reply so the scheduler has concrete work items to process.
+
+  - MessageComposer now grabs the current conversation and personalities from the store. When you submit a message it still
+  appends the user message, but it also enqueues request entries—only for personalities that have autoRespond enabled (web/src/
+  features/conversations/components/MessageComposer.tsx:1).
+  - Lint/type/test/build all green. Captured an updated preview at web/artifacts/preview-queue.png (UI unchanged visually;
+  queue runs on the data layer).
+
+  Next steps: 1) Implement a scheduler effect that consumes scheduler.queue (respecting maxConcurrent/responseDelayMs) and
+  marks in-flight vs. completed. 2) Stub an OpenRouter client to turn queued jobs into mocked responses until real streaming
+  is ready.
+
+### OpenRouter Client
+
+  - Expanded environment config to capture optional attribution headers and documented new vars (web/src/lib/env.ts:1,
+  web/.env.example:1, web/src/types/env.d.ts:1).
+  - Added OpenRouter domain types plus PKCE utilities and storage helpers for managing authorization state (web/src/types/
+  openrouter.ts:1, web/src/lib/openrouter/pkce.ts:1, web/src/lib/openrouter/storage.ts:1).
+  - Implemented OAuth helpers to build authorization URLs, exchange codes, and refresh tokens, along with a typed fetch client
+  for models and chat responses (web/src/lib/openrouter/auth.ts:1, web/src/lib/openrouter/client.ts:1).
+  - Created a persisted Zustand store for tokens/status and a hook that exposes a ready-to-use OpenRouter client instance (web/
+  src/stores/openrouter-store.ts:1, web/src/hooks/useOpenRouterClient.ts:1, web/src/types/index.ts:1).
+
+  Tests: npm run lint; npm run typecheck; npm run test.
+
+  Next steps: 1) Build UI flows that call createAuthorizationUrl and handle the redirect callback to populate the auth store.
+  2) Integrate the useOpenRouterClient hook with the conversation scheduler to fetch model lists and issue chat completions
+  (mock responses until scheduler is ready).
+

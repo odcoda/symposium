@@ -88,6 +88,7 @@ type AppActions = {
   queueRequest: (input: QueueRequestInput) => string
   updateQueueItem: (requestId: string, updates: Partial<RequestQueueItem>) => void
   removeQueueItem: (requestId: string) => void
+  markRequestInFlight: (requestId: string) => void
 }
 
 export type AppState = BaseState & { actions: AppActions }
@@ -523,6 +524,19 @@ export const useAppStore = create<AppState>()(
               }),
               false,
               'scheduler/removeQueueItem',
+            ),
+          markRequestInFlight: (requestId) =>
+            set(
+              (state) => ({
+                scheduler: {
+                  ...state.scheduler,
+                  inFlightIds: state.scheduler.inFlightIds.includes(requestId)
+                    ? state.scheduler.inFlightIds
+                    : [...state.scheduler.inFlightIds, requestId],
+                },
+              }),
+              false,
+              'scheduler/markRequestInFlight',
             ),
         }
 

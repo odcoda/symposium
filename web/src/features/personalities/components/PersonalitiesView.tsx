@@ -1,5 +1,7 @@
 import type { ChangeEvent } from 'react'
 
+import { useMemo } from 'react'
+
 import { useAppStore } from '@/stores/app-store'
 import type { Personality } from '@/types'
 
@@ -142,8 +144,10 @@ const PersonalityCard = ({ personality }: { personality: Personality }) => {
 }
 
 export const PersonalitiesView = () => {
-  const personalities = useAppStore((state) => Object.values(state.personalities))
+  const personalitiesById = useAppStore((state) => state.personalities)
   const { createPersonality } = useAppStore((state) => state.actions)
+
+  const personalities = useMemo(() => Object.values(personalitiesById), [personalitiesById])
 
   const handleAddPersonality = () => {
     createPersonality({

@@ -1,0 +1,32 @@
+there should be a single conversation scheduler component
+- the scheduler knows exactly which participants are currently talking (i.e.
+  which LLM messages are currently in flight)
+- when the user sends a message, the scheduler decides whether to kick off more
+  requests
+- when a new LLM message or message chunk appears, the scheduler similarly
+  decides whether to kick off more requests
+
+the scheduler should take into account the following state
+- which personalities already have messages in flight
+- user settings / limits around the number of messages in flight
+- user settings around whether the chat should be auto-response or request-only
+- user settings around whether personalities can reply to chunks, or only full
+  messages
+
+if the scheduler wants to send a new message. it needs to select which personalities
+will get to do it. It should take into account
+- each personality's rules for replying (on mention only, anytime, eagerness)
+- each personality's priority / interests
+- when each personality last spoke (in time, and message history)
+
+the code to actually send and receive messages to openrouter (or other LLM providers)
+should be in a separate place from the scheduler, to simplify the scheduler
+(that code is quite complex, and the scheduler itself is also likely to get quite complex)
+
+there shouldn't be any ui code in the scheduler itself, but it can call other components
+to tell them updates.
+
+updates it should propagate to the ui:
+- anytime we send a request to an LLM provider (this can render as "XYZ is replying...")
+- anytime a message fragment is sent back from an LLM provider
+- anytime a reasoning fragment is sent back from an LLM provider
