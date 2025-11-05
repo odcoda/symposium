@@ -11,6 +11,7 @@ export interface Message {
   authorRole: Role
   content: string
   createdAt: string
+  updatedAt: string
   status: MessageStatus
 }
 
@@ -35,14 +36,6 @@ export interface Conversation {
   activePersonalityIds: string[]
   createdAt: string
   updatedAt: string
-}
-
-export interface MemoryCheckpoint {
-  id: string
-  conversationId: string
-  summary: string
-  createdAt: string
-  personalityId?: string
 }
 
 export type ResponsePacing = 'relaxed' | 'steady' | 'quick'

@@ -36,4 +36,3 @@ To clear it:
   - Open DevTools → Application → Storage → Local Storage → http://…. Highlight symposium-app-state and hit Delete, then
   refresh.
   - Or in the console run localStorage.removeItem('symposium-app-state'), refresh, and the app will rebuild the default state
-  with scheduler.queue: [].

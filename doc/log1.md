@@ -1,4 +1,18 @@
 ## 2025-11-04
+### type fixes
+- removed some duplicate fields (personality id and author id)
+- removed some pinned memory stuff which was totally unused (no files yet)
+- we should add docstrings, eventually
+
+### Persist Merge Fix
+
+  - Added a custom merge for the persisted store so hydration deep-merges scheduler.settings while retaining in-memory queue
+  and inFlightIds, preventing state.scheduler.queue from being clobbered (src/stores/app-store.ts:545).
+  - The same merge keeps ui.isSettingsOpen intact and only overrides activeView when it exists in storage.
+
+  No automated tests run (logic-only change). Next step: clear any stale symposium-app-state entry in localStorage once so the
+  new merge hydrates cleanly, then reload to confirm the queue now starts as [].
+
 ### Scheduler & OpenRouter Scaffolding
 
   - Added OpenRouter domain types, PKCE helpers, token persistence, and a reusable client/executor pair so the app can

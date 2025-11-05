@@ -130,6 +130,7 @@ const createInitialState = (): BaseState => {
     authorRole: 'assistant',
     content: 'Welcome to Symposium! Start a conversation or customise personalities to get going.',
     createdAt: timestamp,
+    updatedAt: timestamp,
     status: 'complete',
   }
 
@@ -310,6 +311,7 @@ export const useAppStore = create<AppState>()(
               authorRole: input.authorRole,
               content: input.content,
               createdAt,
+              updatedAt: createdAt,
               status,
             }
 
@@ -540,6 +542,30 @@ export const useAppStore = create<AppState>()(
         name: STORE_KEY,
         version: STORE_VERSION,
         storage,
+        merge: (persistedState, currentState) => {
+          if (!persistedState) {
+            return currentState
+          }
+
+          const typed = persistedState as PersistedState
+          const { scheduler, ui, ...rest } = typed
+
+          return {
+            ...currentState,
+            ...rest,
+            scheduler: {
+              ...currentState.scheduler,
+              settings: {
+                ...currentState.scheduler.settings,
+                ...(scheduler?.settings ?? {}),
+              },
+            },
+            ui: {
+              ...currentState.ui,
+              activeView: ui?.activeView ?? currentState.ui.activeView,
+            },
+          }
+        },
         partialize: (state): PersistedState => ({
           personalities: state.personalities,
           conversations: state.conversations,
