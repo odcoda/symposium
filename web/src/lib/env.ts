@@ -31,4 +31,4 @@ export const openRouterEnv: OpenRouterEnvConfig = {
   appTitle: import.meta.env.VITE_OPENROUTER_APP_TITLE ?? null,
 }
 
-export const hasOpenRouterCredentials = () => Boolean(openRouterEnv.clientId && openRouterEnv.redirectUri)
+export const hasOpenRouterConfig = () => Boolean(openRouterEnv.redirectUri)

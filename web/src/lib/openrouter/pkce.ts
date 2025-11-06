@@ -1,14 +1,15 @@
+import { Buffer } from 'buffer'
+
 import { createId } from '@/utils/id'
 
 const DEFAULT_VERIFIER_LENGTH = 96
 
-const base64UrlEncode = (input: Uint8Array) => {
-  let binary = ''
-  input.forEach((value) => {
-    binary += String.fromCharCode(value)
-  })
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/u, '')
-}
+const toBase64Url = (input: Uint8Array | ArrayBuffer) =>
+  Buffer.from(input instanceof ArrayBuffer ? new Uint8Array(input) : input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/u, '')
 
 const randomBytes = (length: number) => {
   if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
@@ -24,7 +25,7 @@ const randomBytes = (length: number) => {
 
 export const generateCodeVerifier = (length = DEFAULT_VERIFIER_LENGTH) => {
   const bytes = randomBytes(length)
-  return base64UrlEncode(bytes)
+  return toBase64Url(bytes)
 }
 
 export const generateCodeChallenge = async (verifier: string) => {
@@ -32,7 +33,7 @@ export const generateCodeChallenge = async (verifier: string) => {
     const encoder = new TextEncoder()
     const data = encoder.encode(verifier)
     const digest = await crypto.subtle.digest('SHA-256', data)
-    return base64UrlEncode(new Uint8Array(digest))
+    return toBase64Url(digest)
   }
 
   throw new Error('SubtleCrypto not available for PKCE')

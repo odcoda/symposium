@@ -22,7 +22,7 @@ export const consumePkceSession = (expectedState: string) => {
     storage.removeItem(PKCE_STORAGE_KEY)
 
     const session = JSON.parse(raw) as PkceSession
-    if (session.state !== expectedState) {
+    if (expectedState && session.state !== expectedState) {
       console.warn('PKCE state mismatch')
       return null
     }

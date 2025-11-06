@@ -1,14 +1,15 @@
-import { openRouterEnv, hasOpenRouterCredentials } from '@/lib/env'
+import { openRouterEnv, hasOpenRouterConfig } from '@/lib/env'
 import type { OpenRouterTokenResponse, OpenRouterTokens } from '@/types'
 
 import { generateCodeChallenge, generateCodeVerifier, generateState } from './pkce'
 import { consumePkceSession, savePkceSession } from './storage'
 
 const AUTHORIZE_URL = 'https://openrouter.ai/oauth/authorize'
-const TOKEN_URL = 'https://openrouter.ai/api/v1/oauth/token'
+const AUTH_URL = 'https://openrouter.ai/auth'
+const TOKEN_URL = 'https://openrouter.ai/api/v1/auth/keys'
 
 const ensureCredentials = () => {
-  if (!hasOpenRouterCredentials()) {
+  if (!hasOpenRouterConfig()) {
     throw new Error('OpenRouter OAuth environment variables are not configured')
   }
 }
@@ -49,15 +50,23 @@ export const createAuthorizationUrl = async (options?: {
     createdAt: Date.now(),
   })
 
-  const url = new URL(AUTHORIZE_URL)
+  const useClientFlow = Boolean(openRouterEnv.clientId)
+  const url = new URL(useClientFlow ? AUTHORIZE_URL : AUTH_URL)
   url.searchParams.set('response_type', 'code')
-  url.searchParams.set('client_id', openRouterEnv.clientId!)
-  url.searchParams.set('redirect_uri', openRouterEnv.redirectUri!)
-  url.searchParams.set('scope', (options?.scopes ?? openRouterEnv.scopes).join(' '))
+  if (useClientFlow) {
+    url.searchParams.set('client_id', openRouterEnv.clientId!)
+    url.searchParams.set('redirect_uri', openRouterEnv.redirectUri!)
+    if ((options?.scopes ?? openRouterEnv.scopes).length) {
+      url.searchParams.set('scope', (options?.scopes ?? openRouterEnv.scopes).join(' '))
+    }
+    url.searchParams.set('prompt', options?.prompt ?? 'consent')
+  } else {
+    url.searchParams.set('callback_url', openRouterEnv.redirectUri!)
+  }
+
   url.searchParams.set('state', state)
   url.searchParams.set('code_challenge', codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
-  url.searchParams.set('prompt', options?.prompt ?? 'consent')
 
   return {
     url: url.toString(),
@@ -72,21 +81,25 @@ export const exchangeAuthorizationCode = async (params: { code: string; state: s
     throw new Error('PKCE session missing or state mismatch; restart sign-in')
   }
 
-  const payload = new URLSearchParams({
-    grant_type: 'authorization_code',
+  // const payload = new URLSearchParams({
+  const payload = {
+    // grant_type: 'authorization_code',
     code: params.code,
-    redirect_uri: openRouterEnv.redirectUri!,
-    client_id: openRouterEnv.clientId!,
+    // redirect_uri: openRouterEnv.redirectUri!,
     code_verifier: session.codeVerifier,
-  })
+    code_challenge_method: 'S256',
+  }
+
+  // if (openRouterEnv.clientId) {
+  //   payload.set('client_id', openRouterEnv.clientId)
+  // }
 
   const response = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
+      'Content-Type': 'application/json',
     },
-    body: payload,
+    body: JSON.stringify(payload)
   })
 
   if (!response.ok) {
@@ -103,8 +116,11 @@ export const refreshAccessToken = async (refreshToken: string) => {
   const payload = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
-    client_id: openRouterEnv.clientId!,
   })
+
+  if (openRouterEnv.clientId) {
+    payload.set('client_id', openRouterEnv.clientId)
+  }
 
   const response = await fetch(TOKEN_URL, {
     method: 'POST',

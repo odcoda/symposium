@@ -1,4 +1,239 @@
 ## 2025-11-05
+
+### OAuth bug fixes
+- fixed vibed (incorrect) URLs
+- ran far enough that oauth response shows up with a key
+- UI still doesn't look quite right (and I suspect the key did not make it into local storage)
+
+### Security Review
+
+  - src/lib/openrouter/storage.ts:17 now skips the PKCE state comparison whenever the callback omits state (if (expectedState
+  && …)). That removes the CSRF safeguard PKCE relies on; an attacker that can trigger OAuth in the victim’s browser could
+  bounce them back with their own authorization code and succeed because we still have a valid PKCE verifier stored. Treat
+  missing state as an error (or fall back to a secondary verifier) instead of silently accepting it.
+  - src/lib/env.ts:24 / src/lib/openrouter/auth.ts:24 allow running without a client id, flipping to the /auth shortcut.
+  That’s fine, but you must still demand a returned state; if the hosted flow truly never sends one, wrap the callback in an
+  additional origin check (e.g., hash the verifier into the redirect URL) before shipping.
+
+  Manual Testing
+
+  - In a fresh tab (logged out), run:
+
+    const auth = await import('/src/lib/openrouter/auth.ts');
+    const { url } = await auth.createAuthorizationUrl();
+    window.location.href = url;
+    This stores the PKCE verifier/state in localStorage['openrouter:pkce'] and redirects you to OpenRouter.
+  - After consenting, OpenRouter sends you back to VITE_OPENROUTER_REDIRECT_URI. In the console on that page:
+
+    const auth = await import('/src/lib/openrouter/auth.ts');
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state'); // should be non-null; if null, abort
+    const tokens = await auth.exchangeAuthorizationCode({ code, state: state ?? '' });
+    const { useOpenRouterStore } = await import('/src/stores/openrouter-store.ts');
+    useOpenRouterStore.getState().actions.setTokens(tokens);
+    Inspect useOpenRouterStore.getState().tokens to confirm they persisted.
+  - To exercise the no-client-id branch, remove VITE_OPENROUTER_CLIENT_ID, reload, and repeat. Verify the callback still
+  returns state; if it doesn’t, fix the guard before relying on this flow.
+
+#### What is client_id?
+
+client_id is the identifier OpenRouter assigns when you register an OAuth client. In the “pure” OAuth 2.0 PKCE flow the steps
+  are:
+
+  - You tell OpenRouter “I’m client abc123, redirect me to https://foo/callback, and here’s my PKCE challenge.”
+  - After the user consents, OpenRouter sends the browser back to that redirect with code (and usually state).
+  - You redeem the code, presenting the code_verifier plus your client_id.
+
+  Because your codebase supports both registered and unregistered flows, createAuthorizationUrl branches:
+
+  - With client_id (AUTHORIZE_URL): uses the full OAuth endpoints. You must have a registered client in OpenRouter’s dashboard
+  (they’re rolling this out slowly; if you don’t see a form, you need to request access via support).
+  - Without client_id (AUTH_URL): hits the hosted “sign in and bounce back” endpoint OpenRouter exposes for quick integrations.
+  In that mode the server already knows which app is asking (because you configured the callback URL in their UI or they
+  default to generic behavior), so you only pass callback_url; client_id isn’t required.
+
+  The fallback exists so you can start testing even if you haven’t been issued a client id, but once OpenRouter gives you one
+  you should use the full OAuth branch—PKCE + registered redirect URIs is the standard, auditable flow.
+
+  Security-wise the two are equivalent provided you still verify state on the callback. Right now consumePkceSession skips that
+  check when the provider omits state; restore the validation or add another signed token in the URL. Without it, a malicious
+  tab could inject their own authorization code, even though PKCE still protects against code interception.
+
+  If you want a client id today and don’t see a self-serve form, reach out to OpenRouter support—they’re issuing ids to select
+  partners. Until then, the AUTH_URL branch will work for local testing, but keep the state guard in place so you’re ready when
+  you switch to the full client flow.
+
+#### PKCE at a Glance
+  Proof Key for Code Exchange augments OAuth’s authorization-code flow so public clients (mobile apps, SPAs) can’t have their
+  authorization code stolen and reused.
+
+  1. Generate a secret locally. Before redirecting to the provider, the client creates a random code_verifier.
+  2. Derive a public value. It hashes that verifier into a code_challenge and includes it, along with client ID, redirect URI,
+  scopes, etc., when it sends the user to the provider.
+  3. Provider keeps the challenge. The user signs in; the provider stores the code_challenge tied to the session and redirects
+  back with a short-lived code and the state.
+  4. Redeem with proof. The client exchanges the code for tokens by sending code_verifier. The provider re‑hashes it and checks
+  it matches the stored challenge before issuing tokens.
+
+  Why it’s secure: even if an attacker intercepts the redirect and grabs the code, they can’t redeem it without the verifier,
+  which only the original client knows. The state parameter adds CSRF protection—if the value coming back isn’t the one you
+  stored, you abort.
+
+  It’s standard for SPA/mobile apps and considered safe when you enforce TLS, use unpredictable verifiers, and validate state
+  and redirect_uri. The code in your repo does exactly that: generates a verifier/challenge (src/lib/openrouter/pkce.ts),
+  stores the verifier keyed by state, and only issues tokens when the returning state matches. So yes, it’s the recommended way
+  to secure OAuth for public clients.
+
+#### Why is state important?
+If an OAuth provider skips state on the redirect, you lose a key CSRF guard. PKCE stops someone from redeeming the
+  authorization code without your code_verifier, but it doesn’t stop a malicious page or MITM from initiating their own auth
+  request and bouncing the victim back to your redirect URI with that attacker-generated code. If your app blindly exchanges
+  it, you’ll end up logged in as (or sending data to) the attacker’s account.
+
+  So best practice is:
+
+  - Always send a random state when you build the authorize URL.
+  - Reject callbacks that don’t include the same state you stored.
+
+  If OpenRouter truly omits state in their redirect, treat that as a security bug and contact them. Until it’s fixed, the only
+  mitigation is to ensure your redirect handler decodes parameters from a location you trust (e.g., same-origin route) and
+  never accepts codes triggered by untrusted contexts—but verifying state is the standard defense.
+
+  Double-check, though: many docs show a simplified callback snippet that reads only code, yet the actual service still returns
+  state when you supply one. The implementation in this repo already stores and validates state, so if you observe it missing
+  in practice, it’s worth reporting upstream.
+
+state blocks CSRF precisely because a MITM or malicious site can’t automatically get the exact value your app generated:
+
+  1. When you send the user to the OAuth provider, you generate a high-entropy state, save it locally, and include it in the
+  redirect URL.
+  2. The attacker can start their own OAuth flow and bounce the user to your redirect, but their flow uses their state. You
+  compare the returning state to the one you stored; it doesn’t match, so you reject the response.
+  3. If the attacker doesn’t know your state (they shouldn’t; it never leaves your app except inside the initial redirect
+  request over TLS), they can’t forge a valid callback.
+  4. Even if they somehow intercepted your redirect request, they’d also see the code_verifier, so PKCE relies on TLS + state;
+  but state still prevents same-origin CSRF (e.g., a malicious form POSTing to your callback URL with an attacker-issued code).
+
+  So PKCE protects the code exchange, state protects the callback from being replayed or hijacked. Neither replaces the other;
+  together they close the main OAuth-for-SPA holes. Without state, a malicious script could submit an auto-login request to
+  your redirect URI with their own code (since they control the browser) and trick your app into linking the victim session to
+  the attacker’s account. The state check stops that.
+
+
+### OAuth button bug
+Good catch—the button was disabled because the store stayed in the authorizing state after you hit “Sign in” but returned
+  without an OAuth code/state in the URL (for example, canceling out of the OpenRouter page). That state keeps the button
+  disabled and shows “Connecting to OpenRouter…”.
+
+  I added a guard in OpenRouterAuthManager:14 that runs on mount: if the status is still authorizing, no tokens are stored, and
+  there’s no code/state query present, it resets the status back to signed-out. Now the button re-enables so you can start the
+  PKCE flow again. Lint passes (npm run lint). Try reloading the page—“Sign in” should be clickable again.
+
+### OAuth changes
+Updated the OAuth flow so you can use pure PKCE without embedding a client ID, matching the OpenRouter docs snippet.
+
+  - Swapped PKCE helpers over to the exact Buffer.from(...).toString('base64url') approach and added the buffer polyfill so
+  Vite can bundle it (web/src/lib/openrouter/pkce.ts:1, web/package.json:19).
+  - Relaxed the auth config requirement: only VITE_OPENROUTER_REDIRECT_URI is needed now; client_id is optional.
+  createAuthorizationUrl automatically chooses the /auth endpoint when no client ID is present and uses the new callback_url
+  parameter (web/src/lib/openrouter/auth.ts:1, web/src/lib/env.ts:8).
+  - Made PKCE storage tolerant of flows that don’t return a state param and adjusted the auth manager to exchange
+  codes even when state is absent (web/src/lib/openrouter/storage.ts:1, web/src/features/openrouter/components/
+  OpenRouterAuthManager.tsx:14).
+  - UI controls now rely on the relaxed config check and surface errors if you try to sign in without a redirect configured
+  (web/src/features/openrouter/components/OpenRouterAuthControls.tsx:4).
+
+  With VITE_OPENROUTER_REDIRECT_URI set (and optional APP_URL/TITLE for attribution), the “Sign in” button launches the PKCE
+  flow at https://openrouter.ai/auth?... and handles the callback without hard-coded credentials. Tests remain green (npm run
+  lint, npm run typecheck, npm run test).
+
+Restored the PKCE state requirement while keeping the client‑id optional flow.
+
+  - exchangeAuthorizationCode once again insists on a state and consumePkceSession validates it, ensuring CSRF protection (web/
+  src/lib/openrouter/auth.ts:43, web/src/lib/openrouter/storage.ts:15).
+  - The auth manager now bails unless both code and state are present, forwarding both to the exchange call (web/src/features/
+  openrouter/components/OpenRouterAuthManager.tsx:32).
+
+  Lint/type/test all pass. The sign-in button still uses /auth?callback_url=... but now always includes a state query parameter
+  that must round-trip, preventing unauthorized callbacks.
+
+The “Unknown encoding: base64url” error comes from Buffer.toString('base64url'), which isn’t supported by the browser-
+  friendly Buffer polyfill. I replaced it with a helper that converts to standard base64 and manually applies the URL-safe
+  substitutions (web/src/lib/openrouter/pkce.ts:4). Now both the verifier and challenge use toBase64Url, so the sign-in flow
+  can generate PKCE code challenges without errors. All scripts (npm run test) still pass; you should be able to click “Sign
+  in” and reach OpenRouter’s OAuth page successfully.
+
+### OAuth UI
+OpenRouter auth is now wired into the UI so you can connect directly from the app.
+
+  - Introduced PKCE callback handling via OpenRouterAuthManager, which detects code/state in the URL, exchanges them for
+  tokens, and persists them in the auth store (web/src/features/openrouter/components/OpenRouterAuthManager.tsx:1).
+  - Added top-right controls that reflect connection state and let you sign in/out. The button kicks off the
+  OAuth flow when credentials are present; errors surface inline (web/src/features/openrouter/components/
+  OpenRouterAuthControls.tsx:1, .module.css:1).
+  - Display a status banner under the header so the user always knows whether OpenRouter is connected, authorizing, or errored.
+  - Updated App layout to include the scheduler, auth manager, controls, and banner (web/src/app/App.tsx:1, App.module.css:1).
+  - Rebuilt styles/tests; new screenshot at web/artifacts/preview-auth.png shows the banner + sign-in button.
+
+  Tests: npm run lint; npm run typecheck; npm run test; npm run build.
+
+  Next steps: 1) After you supply real OpenRouter OAuth credentials (.env), sign in via the new button to validate the flow. 2)
+  Hook scheduler outputs to show live “X is replying…” indicators and streaming updates, using the auth tokens to hit the real
+  API when ready.
+
+### Streaming Plan
+
+To stream each request without breaking the existing queue/scheduler design, treat streaming as part of startRequest:
+
+  1. Keep enqueueing work through the queue
+
+  - MessageComposer already calls queueRequest. Keep that pattern; it keeps producers decoupled from the scheduler and
+  preserves concurrency limits.
+  - When you enqueue, mark the user’s message as queued or pending (whatever status you like) so the UI shows something is
+  about to happen.
+
+  2. Let the scheduler own streaming
+
+  - In startRequest, create an AbortController and kick off the OpenRouter call with stream: true.
+  - Grab the reader (response.body?.getReader()), decode SSE chunks (exactly like the OpenRouter sample), and append content
+  into a buffer.
+  - After each chunk arrives, call updateMessage(messageId, { content: buffer }) so the UI gets live updates. The Message
+  record stays the single place components read from.
+  - When reader.read() returns done, flip the message to { status: 'complete' }, remove the queue item, and keep the final
+  content in state.
+
+  3. Keep concurrency under control
+
+  - The existing activeRequests set plus maxConcurrent logic already limits the number of concurrent startRequest invocations.
+  Because each call is async and you aren’t awaiting them in the loop, multiple streaming responses can flow simultaneously.
+  - Users can send more messages while streams are active; each new message just queues another RequestQueueItem and the
+  scheduler will grab it once a slot opens.
+
+  4. Support cancellation & cleanup
+
+  - Store the AbortController on a local map keyed by request.id if you want to cancel when the user deletes a message or hits
+  “stop”.
+  - In finally, whether success or error, make sure to reader.cancel() (if you obtained one),
+  activeRequests.current.delete(request.id), and tidy any controller map entry.
+
+  5. Fit this into your existing executor
+
+  - Right now executeChatCompletion only does a full JSON request. You can either:
+      - Replace it with a streaming implementation (set body.stream = true, parse the SSE stream, invoke onContentChunk on each
+  chunk), returning the final message at the end; or
+      - Add a new executeStreamingChatCompletion and call that from ConversationScheduler while leaving the existing function
+  for non-streaming use.
+
+  6. Handle errors
+
+  - If any chunk parsing throws, call failRequest(request, error.message) so the message shows “LLM error: …” just like today.
+  - Because you’re updating the message content incrementally, choose whether to leave the partial text or clear it on error;
+  you can set content: previousContent + '\n\n(LLM error …)'.
+
+  This approach keeps the queue as the handoff point, lets multiple streams run in parallel within the concurrency cap, and
+  keeps UI components simple—they just read message records and render whatever content/status is there.
+
 ### type comments
 - added some descriptions of the types
 - clean up slightly more unused types
