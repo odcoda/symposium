@@ -1,0 +1,32 @@
+Conversation back off algo
+
+4 params per personality
+Base eagerness
+Politeness penalty
+Politeness half-life
+Mention boost
+
+Global parameters
+when to trigger
+global temperature
+
+each personality has a mention score and politeness score that we track and update per message
+
+mention score starts at 0 increases by (mention boost) for each message where
+personality was mentioned since it last messaged. When the personality talks the
+mention score gets reset to 0
+
+politeness score starts at 0 and decreases by politeness penalty every time the
+personality messages (maybe with an extra multiplier based on message length).
+Every message decays the politeness score by some multiplier (eg 0.8)
+
+when we're triggered to choose a speaker we compute logits per personality
+
+logit = (base eagerness) + (politeness score) + (mention score)
+
+Then we compute Softmax w temperature of the resulting logits to get
+probabilities, and sample w those probabilities to see which personality to
+invoke
+
+Can trigger on every user message (quiet), every message completion (medium), or
+every so often with automatic timeouts (active)

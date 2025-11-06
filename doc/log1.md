@@ -1,3 +1,8 @@
+## 2025-11-05
+### type comments
+- added some descriptions of the types
+- clean up slightly more unused types
+
 ## 2025-11-04
 ### type fixes
 - removed some duplicate fields (personality id and author id)
