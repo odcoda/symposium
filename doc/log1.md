@@ -1,3 +1,18 @@
+## 2025-11-06
+
+### Scheduler backoff algorithm
+- Added scheduler utilities to track mention and politeness scores per personality and refresh them whenever messages are appended, enabling the backoff algorithm’s state updates. 
+
+- Extended personality defaults, creation/deletion flows, and persisted scheduler data to include the algorithm’s parameters and maintain per-personality scheduler state. 
+
+- Implemented softmax-based sampling in the conversation scheduler so queued requests are launched according to the new backoff weights and global temperature. 
+
+- Refactored the scheduler to rely on new math helpers for computing logits, probabilities, and sampling when selecting queued requests.
+
+- Exported the scheduler state update utilities so deterministic state transitions can be exercised in tests.
+
+- Added a Vitest case that replays a canned message sequence and asserts the resulting logits and probabilities for easy inspection.
+
 ## 2025-11-05
 
 ### OAuth bug fixes
