@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
 import { executeChatCompletion } from '@/lib/openrouter/executor'
+import {
+  MIN_SELECTION_TEMPERATURE,
+  calculateRequestLogits,
+  sampleIndexFromLogits,
+} from '@/features/conversations/schedulerMath'
 import { useAppStore } from '@/stores/app-store'
 import type {
   Message,
@@ -92,6 +97,8 @@ const failRequest = (request: RequestQueueItem, error: string) => {
 export const ConversationScheduler = () => {
   const queue = useAppStore((state) => state.scheduler.queue)
   const settings = useAppStore((state) => state.scheduler.settings)
+  const personalityStates = useAppStore((state) => state.scheduler.personalityStates)
+  const personalities = useAppStore((state) => state.personalities)
   const markInFlight = useAppStore((state) => state.actions.markRequestInFlight)
   const updateQueueItem = useAppStore((state) => state.actions.updateQueueItem)
   const openRouterClient = useOpenRouterClient()
@@ -182,6 +189,47 @@ export const ConversationScheduler = () => {
     [queue],
   )
 
+  const selectRequestsForSlots = useCallback(
+    (slots: number) => {
+      if (slots <= 0) {
+        return []
+      }
+
+      const candidates = queuedItems.filter((item) => {
+        if (activeRequests.current.has(item.id)) {
+          return false
+        }
+
+        return Boolean(personalities[item.authorId])
+      })
+
+      const selections: RequestQueueItem[] = []
+      const workingList = [...candidates]
+      const selectionTemperature = Math.max(
+        MIN_SELECTION_TEMPERATURE,
+        settings.selectionTemperature,
+      )
+
+      while (selections.length < slots && workingList.length > 0) {
+        const logits = calculateRequestLogits(
+          workingList,
+          personalities,
+          personalityStates,
+        )
+        const selectedIndex = sampleIndexFromLogits(logits, selectionTemperature)
+        if (selectedIndex < 0) {
+          break
+        }
+
+        selections.push(workingList[selectedIndex])
+        workingList.splice(selectedIndex, 1)
+      }
+
+      return selections
+    },
+    [personalityStates, personalities, queuedItems, settings.selectionTemperature],
+  )
+
   useEffect(() => {
     if (!settings.autoStart) {
       return
@@ -200,7 +248,7 @@ export const ConversationScheduler = () => {
       return
     }
 
-    const nextBatch = queuedItems.slice(0, slots)
+    const nextBatch = selectRequestsForSlots(slots)
     nextBatch.forEach((request) => {
       if (activeRequests.current.has(request.id)) {
         return
@@ -208,7 +256,7 @@ export const ConversationScheduler = () => {
 
       startRequest(request)
     })
-  }, [queuedItems, settings.autoStart, startRequest])
+  }, [queuedItems, selectRequestsForSlots, settings.autoStart, startRequest])
 
   return null
 }
