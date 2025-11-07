@@ -16,10 +16,109 @@ import { resolveStorage } from '@/utils/storage'
 const STORE_KEY = 'symposium-app-state'
 const STORE_VERSION = 1
 
+const DEFAULT_TRIGGER_MODE: SchedulerSettings['triggerMode'] = 'medium'
+const DEFAULT_SELECTION_TEMPERATURE = 1
+const DEFAULT_POLITENESS_DECAY = 0.8
+
+export const createPersonalitySchedulerState = (
+  messageCounter: number,
+): PersonalitySchedulerState => ({
+  mentionScore: 0,
+  politenessScore: 0,
+  lastUpdatedMessageIndex: messageCounter,
+  lastSpokeMessageIndex: null,
+})
+
+export const applySchedulerMessageUpdate = (
+  state: BaseState,
+  message: Message,
+): SchedulerState => {
+  const nextMessageIndex = state.scheduler.messageCounter + 1
+
+  const updatedPersonalityStates = Object.values(state.personalities).reduce<
+    Record<string, PersonalitySchedulerState>
+  >((acc, personality) => {
+    const existing =
+      state.scheduler.personalityStates[personality.id] ??
+      createPersonalitySchedulerState(state.scheduler.messageCounter)
+
+    const delta = Math.max(0, nextMessageIndex - existing.lastUpdatedMessageIndex)
+    const halfLife = Math.max(1, personality.politenessHalfLife)
+    const decayFactor = Math.pow(0.5, delta / halfLife)
+    const decayedPoliteness =
+      existing.politenessScore * decayFactor * state.scheduler.settings.politenessDecayMultiplier
+
+    acc[personality.id] = {
+      ...existing,
+      politenessScore: decayedPoliteness,
+      lastUpdatedMessageIndex: nextMessageIndex,
+    }
+
+    return acc
+  }, {})
+
+  const lowerContent = message.content.toLowerCase()
+  if (lowerContent.length > 0) {
+    Object.values(state.personalities).forEach((personality) => {
+      if (message.authorId === personality.id) {
+        return
+      }
+
+      const personaState = updatedPersonalityStates[personality.id]
+      if (!personaState) {
+        return
+      }
+
+      const name = personality.name.trim().toLowerCase()
+      if (!name) {
+        return
+      }
+
+      if (lowerContent.includes(name)) {
+        updatedPersonalityStates[personality.id] = {
+          ...personaState,
+          mentionScore: personaState.mentionScore + personality.mentionBoost,
+        }
+      }
+    })
+  }
+
+  if (message.authorRole === 'assistant') {
+    const personality = state.personalities[message.authorId]
+    if (personality) {
+      const personaState =
+        updatedPersonalityStates[personality.id] ??
+        createPersonalitySchedulerState(state.scheduler.messageCounter)
+
+      updatedPersonalityStates[personality.id] = {
+        ...personaState,
+        mentionScore: 0,
+        politenessScore: personaState.politenessScore - personality.politenessPenalty,
+        lastSpokeMessageIndex: nextMessageIndex,
+      }
+    }
+  }
+
+  return {
+    ...state.scheduler,
+    personalityStates: updatedPersonalityStates,
+    messageCounter: nextMessageIndex,
+  }
+}
+
+export interface PersonalitySchedulerState {
+  mentionScore: number
+  politenessScore: number
+  lastUpdatedMessageIndex: number
+  lastSpokeMessageIndex: number | null
+}
+
 interface SchedulerState {
   settings: SchedulerSettings
   queue: RequestQueueItem[]
   inFlightIds: string[]
+  personalityStates: Record<string, PersonalitySchedulerState>
+  messageCounter: number
 }
 
 interface UIState {
@@ -61,6 +160,9 @@ type CreatePersonalityInput = {
   prompt?: string
   temperature?: number
   eagerness?: number
+  politenessPenalty?: number
+  politenessHalfLife?: number
+  mentionBoost?: number
   autoRespond?: boolean
   color?: string
 }
@@ -115,6 +217,9 @@ const createInitialState = (): BaseState => {
     prompt: 'You are a helpful collaborator who reasons carefully and communicates succinctly.',
     temperature: 0.6,
     eagerness: 0.5,
+    politenessPenalty: 0.2,
+    politenessHalfLife: 4,
+    mentionBoost: 1,
     color: '#6366f1',
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -161,9 +266,16 @@ const createInitialState = (): BaseState => {
         responseDelayMs: 1200,
         responsePacing: 'steady',
         autoStart: false,
+        triggerMode: DEFAULT_TRIGGER_MODE,
+        selectionTemperature: DEFAULT_SELECTION_TEMPERATURE,
+        politenessDecayMultiplier: DEFAULT_POLITENESS_DECAY,
       },
       queue: [],
       inFlightIds: [],
+      personalityStates: {
+        [defaultPersonality.id]: createPersonalitySchedulerState(0),
+      },
+      messageCounter: 0,
     },
     ui: {
       activeView: 'conversations',
@@ -329,6 +441,7 @@ export const useAppStore = create<AppState>()(
                     updatedAt: createdAt,
                   },
                 },
+                scheduler: applySchedulerMessageUpdate(state, message),
               }),
               false,
               'messages/append',
@@ -367,9 +480,13 @@ export const useAppStore = create<AppState>()(
               name: input?.name?.trim() || 'New Personality',
               model: input?.model ?? 'openrouter/auto',
               description: input?.description ?? '',
-              prompt: input?.prompt ?? '',
+              prompt:
+                input?.prompt ?? 'You are a helpful collaborator who reasons carefully and communicates succinctly.',
               temperature: input?.temperature ?? 0.7,
               eagerness: input?.eagerness ?? 0.5,
+              politenessPenalty: input?.politenessPenalty ?? 0.2,
+              politenessHalfLife: input?.politenessHalfLife ?? 4,
+              mentionBoost: input?.mentionBoost ?? 1,
               color: input?.color ?? '#14b8a6',
               createdAt: now,
               updatedAt: now,
@@ -380,6 +497,13 @@ export const useAppStore = create<AppState>()(
                 personalities: {
                   ...state.personalities,
                   [personality.id]: personality,
+                },
+                scheduler: {
+                  ...state.scheduler,
+                  personalityStates: {
+                    ...state.scheduler.personalityStates,
+                    [personality.id]: createPersonalitySchedulerState(state.scheduler.messageCounter),
+                  },
                 },
               }),
               false,
@@ -436,9 +560,16 @@ export const useAppStore = create<AppState>()(
                   ]),
                 )
 
+                const remainingSchedulerStates = { ...state.scheduler.personalityStates }
+                delete remainingSchedulerStates[personalityId]
+
                 return {
                   personalities: rest,
                   conversations: updatedConversations,
+                  scheduler: {
+                    ...state.scheduler,
+                    personalityStates: remainingSchedulerStates,
+                  },
                 }
               },
               false,
@@ -550,15 +681,31 @@ export const useAppStore = create<AppState>()(
           const typed = persistedState as PersistedState
           const { scheduler, ui, ...rest } = typed
 
+          const mergedPersonalities = {
+            ...currentState.personalities,
+            ...(rest.personalities ?? {}),
+          }
+
+          const mergedPersonalityStates = Object.keys(mergedPersonalities).reduce<
+            Record<string, PersonalitySchedulerState>
+          >((acc, personalityId) => {
+            const existing = currentState.scheduler.personalityStates[personalityId]
+            acc[personalityId] =
+              existing ?? createPersonalitySchedulerState(currentState.scheduler.messageCounter)
+            return acc
+          }, {})
+
           return {
             ...currentState,
             ...rest,
+            personalities: mergedPersonalities,
             scheduler: {
               ...currentState.scheduler,
               settings: {
                 ...currentState.scheduler.settings,
                 ...(scheduler?.settings ?? {}),
               },
+              personalityStates: mergedPersonalityStates,
             },
             ui: {
               ...currentState.ui,
@@ -586,11 +733,22 @@ export const useAppStore = create<AppState>()(
 
           const typed = persistedState as PersistedState
 
+          const mergedPersonalities = {
+            ...base.personalities,
+            ...(typed.personalities ?? {}),
+          }
+
+          const mergedPersonalityStates = Object.keys(mergedPersonalities).reduce<
+            Record<string, PersonalitySchedulerState>
+          >((acc, personalityId) => {
+            acc[personalityId] =
+              base.scheduler.personalityStates[personalityId] ??
+              createPersonalitySchedulerState(base.scheduler.messageCounter)
+            return acc
+          }, {})
+
           return {
-            personalities: {
-              ...base.personalities,
-              ...(typed.personalities ?? {}),
-            },
+            personalities: mergedPersonalities,
             conversations: {
               ...base.conversations,
               ...(typed.conversations ?? {}),
@@ -608,6 +766,8 @@ export const useAppStore = create<AppState>()(
               },
               queue: [],
               inFlightIds: [],
+              personalityStates: mergedPersonalityStates,
+              messageCounter: base.scheduler.messageCounter,
             },
             ui: {
               activeView: typed.ui?.activeView ?? base.ui.activeView,

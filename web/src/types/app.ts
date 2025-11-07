@@ -74,8 +74,10 @@ export interface Message {
   model - Full LLM version string for openrouter
   prompt - included in prompt for every model invocation (note: not the full prompt)
   temperature - for model invocation
-  eagerness - for scheduling
-  halflife - for scheduling
+  eagerness - for scheduling (base eagerness in the backoff algorithm)
+  politenessPenalty - penalty applied when the personality speaks
+  politenessHalfLife - number of messages before politeness penalty halves
+  mentionBoost - increment applied when the personality is mentioned
   createdAt - Timestamp
   updatedAt - Timestamp
   debug - additional info for debugging
@@ -89,6 +91,9 @@ export interface Personality {
   prompt: string
   temperature: number
   eagerness: number
+  politenessPenalty: number
+  politenessHalfLife: number
+  mentionBoost: number
   createdAt: string
   updatedAt: string
   debug?: string
@@ -118,6 +123,9 @@ export interface SchedulerSettings {
   responseDelayMs: number
   responsePacing: ResponsePacing
   autoStart: boolean
+  triggerMode: 'quiet' | 'medium' | 'active'
+  selectionTemperature: number
+  politenessDecayMultiplier: number
 }
 
 export type RequestStatus = 'queued' | 'in-flight' | 'completed' | 'cancelled' | 'error'
