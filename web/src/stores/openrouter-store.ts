@@ -16,7 +16,7 @@ interface OpenRouterState {
     setTokens: (tokens: OpenRouterTokens) => void
     clearTokens: () => void
     setStatus: (status: OpenRouterAuthStatus) => void
-    setError: (message: string) => void
+    setError: (msg: string) => void
   }
 }
 
@@ -60,10 +60,10 @@ export const useOpenRouterStore = create<OpenRouterState>()(
               false,
               'openrouter/setStatus',
             ),
-          setError: (message) =>
+          setError: (msg) =>
             set(
               () => ({
-                lastError: message,
+                lastError: msg,
                 status: 'error',
               }),
               false,

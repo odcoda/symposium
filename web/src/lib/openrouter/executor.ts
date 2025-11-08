@@ -44,13 +44,13 @@ export const executeChatCompletion = async ({
   }
 
   const response = await client.createChatCompletion(request)
-  const message = response.choices[0]?.message?.content ?? ''
-  if (message) {
-    onContentChunk?.(message)
+  const content = response.choices[0]?.message?.content ?? ''
+  if (content) {
+    onContentChunk?.(content)
   }
 
   return {
     response,
-    content: message,
+    content,
   }
 }

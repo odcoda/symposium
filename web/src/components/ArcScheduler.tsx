@@ -5,75 +5,75 @@ import { executeChatCompletion } from '@/lib/openrouter/executor'
 import { deriveAvailableSlots, selectRequestsForSlots } from '@/lib/scheduler'
 import { useAppStore } from '@/stores/app-store'
 import type {
-  Message,
+  Msg,
   OpenRouterChatCompletionRequest,
-  OpenRouterChatMessage,
+  OpenRouterChatMsg,
   RequestQueueItem,
 } from '@/types'
 
-const buildPromptMessages = (conversationId: string, messageId: string) => {
+const buildPromptMsgs = (arcId: string, msgId: string) => {
   const state = useAppStore.getState()
-  const conversation = state.conversations[conversationId]
-  if (!conversation) {
+  const arc = state.arcs[arcId]
+  if (!arc) {
     return null
   }
 
-  const messages: Message[] = conversation.messageIds
-    .map((id) => state.messages[id])
-    .filter((message): message is Message => Boolean(message))
+  const msgs: Msg[] = arc.msgIds
+    .map((id) => state.msgs[id])
+    .filter((msg): msg is Msg => Boolean(msg))
 
-  const insertionIndex = messages.findIndex((message) => message.id === messageId)
+  const insertionIndex = msgs.findIndex((msg) => msg.id === msgId)
   if (insertionIndex === -1) {
-    return messages
+    return msgs
   }
 
-  return messages.slice(0, insertionIndex + 1)
+  return msgs.slice(0, insertionIndex + 1)
 }
 
-const markMessageStreaming = (messageId: string) => {
-  const { updateMessage } = useAppStore.getState().actions
-  updateMessage(messageId, { status: 'streaming' })
+const markMsgStreaming = (msgId: string) => {
+  const { updateMsg } = useAppStore.getState().actions
+  updateMsg(msgId, { status: 'streaming' })
 }
 
-const appendPersonalityMessage = (
+const appendNymMsg = (
   request: RequestQueueItem,
   content: string,
 ) => {
   const state = useAppStore.getState()
-  const { appendMessage, updateMessage, removeQueueItem } = state.actions
-  const personality = state.personalities[request.authorId]
+  const { appendMsg, updateMsg, removeQueueItem } = state.actions
+  const nym = state.nyms[request.authorId]
   const now = new Date().toISOString()
 
-  const messageId = appendMessage(request.conversationId, {
+  const msgId = appendMsg(request.arcId, {
     authorId: request.authorId,
     authorRole: 'assistant',
     content,
     createdAt: now,
-    personalityId: personality?.id,
+    nymId: nym?.id,
     status: 'complete',
   })
 
-  updateMessage(request.messageId, { status: 'complete' })
+  updateMsg(request.msgId, { status: 'complete' })
   removeQueueItem(request.id)
-  return messageId
+  return msgId
 }
 
 const failRequest = (request: RequestQueueItem, error: string) => {
-  const { updateMessage, updateQueueItem, removeQueueItem } = useAppStore.getState().actions
-  updateMessage(request.messageId, {
+  const { updateMsg, updateQueueItem, removeQueueItem } = useAppStore.getState().actions
+  updateMsg(request.msgId, {
     status: 'error',
-    content: `${useAppStore.getState().messages[request.messageId]?.content ?? ''}\n\n(LLM error: ${error})`,
+    content: `${useAppStore.getState().msgs[request.msgId]?.content ?? ''}\n\n(LLM error: ${error})`,
   })
   updateQueueItem(request.id, { status: 'error', error })
   removeQueueItem(request.id)
 }
 
-export const ConversationScheduler = () => {
+export const ArcScheduler = () => {
   const queue = useAppStore((state) => state.scheduler.queue)
   const inFlightIds = useAppStore((state) => state.scheduler.inFlightIds)
   const settings = useAppStore((state) => state.scheduler.settings)
-  const personalityStates = useAppStore((state) => state.scheduler.personalityStates)
-  const personalities = useAppStore((state) => state.personalities)
+  const nymStates = useAppStore((state) => state.scheduler.nymStates)
+  const nyms = useAppStore((state) => state.nyms)
   const markInFlight = useAppStore((state) => state.actions.markRequestInFlight)
   const updateQueueItem = useAppStore((state) => state.actions.updateQueueItem)
   const openRouterClient = useOpenRouterClient()
@@ -86,56 +86,56 @@ export const ConversationScheduler = () => {
         activeRequests.current.add(request.id)
         markInFlight(request.id)
         updateQueueItem(request.id, { status: 'in-flight' })
-        markMessageStreaming(request.messageId)
+        markMsgStreaming(request.msgId)
 
-        const messages = buildPromptMessages(request.conversationId, request.messageId)
-        if (!messages) {
-          failRequest(request, 'Conversation not found')
+        const msgs = buildPromptMsgs(request.arcId, request.msgId)
+        if (!msgs) {
+          failRequest(request, 'Arc not found')
           return
         }
 
-        const personality = useAppStore.getState().personalities[request.authorId]
-        if (!personality) {
-          failRequest(request, 'Personality not found')
+        const nym = useAppStore.getState().nyms[request.authorId]
+        if (!nym) {
+          failRequest(request, 'Nym not found')
           return
         }
 
-        const conversation = useAppStore.getState().conversations[request.conversationId]
-        if (!conversation) {
-          failRequest(request, 'Conversation not found')
+        const arc = useAppStore.getState().arcs[request.arcId]
+        if (!arc) {
+          failRequest(request, 'Arc not found')
           return
         }
 
-        const promptMessages: OpenRouterChatMessage[] = messages.map((message) => {
-          const personalities = useAppStore.getState().personalities
-          if (message.authorRole === 'user') {
-            return { role: 'user', content: message.content }
+        const promptMsgs: OpenRouterChatMsg[] = msgs.map((msg) => {
+          const nyms = useAppStore.getState().nyms
+          if (msg.authorRole === 'user') {
+            return { role: 'user', content: msg.content }
           }
 
-          if (message.authorRole === 'assistant') {
+          if (msg.authorRole === 'assistant') {
             return {
               role: 'assistant',
-              content: message.content,
-              name: personalities[message.authorId ?? '']?.name ?? undefined,
+              content: msg.content,
+              name: nyms[msg.authorId ?? '']?.name ?? undefined,
             }
           }
 
-          return { role: 'system', content: message.content }
+          return { role: 'system', content: msg.content }
         })
 
         const requestBody: OpenRouterChatCompletionRequest = {
-          model: personality.model,
+          model: nym.model,
           messages: [
             {
               role: 'system',
-              content: personality.prompt || 'You are a helpful collaborator.',
+              content: nym.prompt || 'You are a helpful collaborator.',
             },
-            ...promptMessages,
+            ...promptMsgs,
           ],
-          temperature: personality.temperature,
+          temperature: nym.temperature,
           metadata: {
-            conversationId: conversation.id,
-            personalityId: personality.id,
+            arcId: arc.id,
+            nymId: nym.id,
           },
         }
 
@@ -148,7 +148,7 @@ export const ConversationScheduler = () => {
           },
         })
 
-        appendPersonalityMessage(request, assembledContent || result.content)
+        appendNymMsg(request, assembledContent || result.content)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown scheduler error'
         failRequest(request, message)
@@ -175,13 +175,13 @@ export const ConversationScheduler = () => {
       return
     }
 
-    const conversationId = queuedItems[0]?.conversationId
-    if (!conversationId) {
+    const arcId = queuedItems[0]?.arcId
+    if (!arcId) {
       return
     }
 
-    const conversationExists = Boolean(useAppStore.getState().conversations[conversationId])
-    if (!conversationExists) {
+    const arcExists = Boolean(useAppStore.getState().arcs[arcId])
+    if (!arcExists) {
       return
     }
 
@@ -192,8 +192,8 @@ export const ConversationScheduler = () => {
 
     const nextBatch = selectRequestsForSlots({
       queue: queuedItems,
-      personalities,
-      personalityStates,
+      nyms,
+      nymStates,
       selectionTemperature: settings.selectionTemperature,
       slots,
       activeRequestIds: activeRequests.current,
@@ -208,8 +208,8 @@ export const ConversationScheduler = () => {
     })
   }, [
     inFlightCount,
-    personalityStates,
-    personalities,
+    nymStates,
+    nyms,
     queuedItems,
     settings.autoStart,
     settings.maxConcurrent,

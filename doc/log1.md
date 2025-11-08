@@ -1,4 +1,43 @@
 ## 2025-11-08
+### Big refactor
+#### Codebase Simplification
+Simplified the UI layout so everything now lives under web/src/components: ArcsView, MsgComposer, ArcScheduler, NymsView, the
+  OpenRouter auth widgets, and SettingsModal (with their CSS modules) were all moved via git mv, and web/src/app/App.tsx now
+  imports from @/components/*. The old features/**/components directories were removed, and the arc scheduler test relocated to
+  web/src/test/arc-scheduler.test.ts to keep the tree flat. Paths and relative style imports inside each component continue to
+  work from their new home.
+
+#### Renames
+
+Domain + UI
+
+  - web/src/types/app.ts:1 now defines the whole model in terms of Arc, Nym, and Msg (plus AppView = 'arcs' | 'nyms'), updates
+  queue fields (arcId, msgId), and keeps UI guidance so only the codebase—not the user copy—says “Msg”.
+  - The old Conversations/Personalities feature folders were git‑moved to features/arcs and features/nyms; App.tsx:1,
+  ArcsView.tsx:1, ArcScheduler.tsx:1, MsgComposer.tsx:1, and NymsView.tsx:1 all import the new paths, surface “Arcs/Nyms”
+  labels, and ensure any visible text still says “message”.
+  - Scheduler math and selection utilities (web/src/lib/scheduler/selection.ts:1) now operate on nyms/nymStates, while the
+  OpenRouter request body in ArcScheduler still uses the provider-required messages array.
+
+  State + Persistence
+
+  - web/src/stores/app-store.ts:17 renames the Zustand tree (nyms, arcs, msgs, activeArcId), updates every action
+  (setActiveArc, appendMsg, createNym, etc.), and bumps the store version to 2.
+  - A migration helper at web/src/stores/app-store.ts:259 converts legacy personalities/conversations/messages blobs into the
+  new Arc/Nym/Msg shape (renaming messageIds → msgIds, activePersonalityIds → activeNymIds, conversationId → arcId, etc.) so
+  existing localStorage data survives the rename.
+  - Default seed content and queue items were updated accordingly, and the arc scheduling test moved/rewritten at web/src/
+  features/arcs/__tests__/scheduler-algorithm.test.ts:1 with the new terminology and typings.
+
+  OpenRouter + Misc
+
+  - web/src/types/openrouter.ts:41 and web/src/lib/openrouter/executor.ts:1 keep the external API contract (messages/message)
+  while the rest of the app speaks Msg.
+  - Error handling in web/src/features/openrouter/components/OpenRouterAuthControls.tsx:52 and OpenRouterAuthManager.tsx:73 now
+  reads error.message again after the mass rename.
+  - UI polish: composer/header copy uses “message” (MsgComposer.tsx:58), arc previews/empty states say
+  “messages” (ArcsView.tsx:107), and the Nyms editor placeholder reflects the new noun (NymsView.tsx:50).
+
 ### Scheduler Refactor
 
   - Scheduling math/selection now live in web/src/lib/scheduler/math.ts:1 and web/src/lib/scheduler/selection.ts:6, exposing

@@ -1,32 +1,32 @@
-import type { Personality, RequestQueueItem } from '@/types'
-import type { PersonalitySchedulerState } from '@/types/scheduler'
+import type { Nym, RequestQueueItem } from '@/types'
+import type { NymSchedulerState } from '@/types/scheduler'
 
 import { MIN_SELECTION_TEMPERATURE, sampleIndexFromLogits } from './math'
 
 export const calculateRequestLogits = (
   requests: Pick<RequestQueueItem, 'authorId'>[],
-  personalities: Record<string, Personality>,
-  personalityStates: Record<string, PersonalitySchedulerState | undefined>,
+  nyms: Record<string, Nym>,
+  nymStates: Record<string, NymSchedulerState | undefined>,
 ): number[] =>
   requests.map((request) => {
-    const personality = personalities[request.authorId]
-    const state = personalityStates[request.authorId]
+    const nym = nyms[request.authorId]
+    const state = nymStates[request.authorId]
 
-    if (!personality) {
+    if (!nym) {
       return Number.NEGATIVE_INFINITY
     }
 
     const mentionScore = state?.mentionScore ?? 0
     const politenessScore = state?.politenessScore ?? 0
-    const baseEagerness = personality.eagerness ?? 0
+    const baseEagerness = nym.eagerness ?? 0
 
     return baseEagerness + mentionScore + politenessScore
   })
 
 export interface SelectRequestsForSlotsParams {
   queue: RequestQueueItem[]
-  personalities: Record<string, Personality>
-  personalityStates: Record<string, PersonalitySchedulerState | undefined>
+  nyms: Record<string, Nym>
+  nymStates: Record<string, NymSchedulerState | undefined>
   selectionTemperature: number
   slots: number
   activeRequestIds?: Iterable<string>
@@ -37,8 +37,8 @@ export const deriveAvailableSlots = (maxConcurrent: number, activeCount: number)
 
 export const selectRequestsForSlots = ({
   queue,
-  personalities,
-  personalityStates,
+  nyms,
+  nymStates,
   selectionTemperature,
   slots,
   activeRequestIds,
@@ -57,7 +57,7 @@ export const selectRequestsForSlots = ({
       return false
     }
 
-    return Boolean(personalities[item.authorId])
+    return Boolean(nyms[item.authorId])
   })
 
   const workingList = [...candidates]
@@ -65,7 +65,7 @@ export const selectRequestsForSlots = ({
   const safeTemperature = Math.max(MIN_SELECTION_TEMPERATURE, selectionTemperature)
 
   while (selections.length < slots && workingList.length > 0) {
-    const logits = calculateRequestLogits(workingList, personalities, personalityStates)
+    const logits = calculateRequestLogits(workingList, nyms, nymStates)
     const selectedIndex = sampleIndexFromLogits(logits, safeTemperature)
     if (selectedIndex < 0) {
       break

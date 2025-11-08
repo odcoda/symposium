@@ -1,52 +1,53 @@
-export type AppView = 'conversations' | 'personalities'
+export type AppView = 'arcs' | 'nyms'
 
 /*
-  The role of a message author, in llm terminology.
-  All personalities use the 'assistant' role.
+  The role of a msg author, in llm terminology.
+  All nyms use the 'assistant' role.
   Tool calls aren't supported yet.
 */
 export type Role = 'user' | 'assistant' | 'system'
 
 /*
-  The status of a message. The ConversationScheduler keeps this up to date
+  The status of a msg. The ArcScheduler keeps this up to date
   based on the raw completion responses from the model provider.
 */
-export type MessageStatus = 'complete' | 'streaming' | 'error' | 'cancelled'
+export type MsgStatus = 'complete' | 'streaming' | 'error' | 'cancelled'
 
 /*
-  A single message in a conversation.
+  A single message in an arc.
 
-  Every attempted completion request gets a response Message object, even if it
+  Every attempted completion request gets a response Msg object, even if it
   never got a response or errored/canceled.
 
   Currently, we display all messages to the user in the chat window. Eventually
   with tool calling and artifacts we will want a more sophisticated approach
   where only chat messages get rendered.
 
-  TODO support separate chat vs document messages
+  TODO support separate chat vs document msgs
 
-  id - Unique identifier for the message.
-  conversationId - The ID of the conversation this message belongs to.
-  authorId - The ID of the author who wrote this message. Either 'user', 'system', or a personality id.
+  id - Unique identifier for the msg.
+  arcId - The ID of the arc this msg belongs to.
+  authorId - The ID of the author who wrote this msg. Either 'user', 'system', or a nym id.
   authorRole - The author's role.
   content - Raw text
   createdAt - Timestamp
   updatedAt - Timestamp
   status - Displayed to the user
-  statusDetails - Displayed to the user (e.g. error messages)
+  statusDetails - Displayed to the user (e.g. error msgs)
   chunks - raw completion responses from model provider (for debugging)
   generation - raw generation info (e.g. cost, token counts) from model provider (for debugging)
   debug - additional info for debugging
 */
-export interface Message {
+export interface Msg {
   id: string
-  conversationId: string
+  arcId: string
   authorId: string
   authorRole: Role
   content: string
   createdAt: string
   updatedAt: string
-  status: MessageStatus
+  status: MsgStatus
+  nymId?: string
   statusDetails?: string
   chunks?: Record<string, unknown>[]
   generation?: Record<string, unknown>
@@ -67,22 +68,22 @@ export interface Message {
 
   TODO add more configurable parameters
 
-  id - Unique identifier for the personality. This is used as the authorId in messages.
-  name - Display name for the personality
+  id - Unique identifier for the nym. This is used as the authorId in msgs.
+  name - Display name for the nym
   description - Display description
-  color - Hex color for messages
+  color - Hex color for msgs
   model - Full LLM version string for openrouter
   prompt - included in prompt for every model invocation (note: not the full prompt)
   temperature - for model invocation
   eagerness - for scheduling (base eagerness in the backoff algorithm)
-  politenessPenalty - penalty applied when the personality speaks
-  politenessHalfLife - number of messages before politeness penalty halves
-  mentionBoost - increment applied when the personality is mentioned
+  politenessPenalty - penalty applied when the nym speaks
+  politenessHalfLife - number of msgs before politeness penalty halves
+  mentionBoost - increment applied when the nym is mentioned
   createdAt - Timestamp
   updatedAt - Timestamp
   debug - additional info for debugging
 */
-export interface Personality {
+export interface Nym {
   id: string
   name: string
   description: string
@@ -100,17 +101,17 @@ export interface Personality {
 }
 
 /*
-  A chat conversation.
+  A chat arc.
 
-  We track all participants who have ever been in the conversation, as well as
-  the active personalities (for rendering in the UI).
+  We track all participants who have ever been in the arc, as well as
+  the active nyms (for rendering in the UI).
   */
-export interface Conversation {
+export interface Arc {
   id: string
   title: string
   participantIds: string[]
-  messageIds: string[]
-  activePersonalityIds: string[]
+  msgIds: string[]
+  activeNymIds: string[]
   createdAt: string
   updatedAt: string
   debug?: string
@@ -132,9 +133,9 @@ export type RequestStatus = 'queued' | 'in-flight' | 'completed' | 'cancelled' |
 
 export interface RequestQueueItem {
   id: string
-  conversationId: string
+  arcId: string
   authorId: string
-  messageId: string
+  msgId: string
   enqueuedAt: number
   status: RequestStatus
   error?: string

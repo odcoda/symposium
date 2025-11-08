@@ -38,7 +38,7 @@ export interface OpenRouterModelListResponse {
 
 export type OpenRouterChatRole = 'system' | 'user' | 'assistant'
 
-export interface OpenRouterChatMessage {
+export interface OpenRouterChatMsg {
   role: OpenRouterChatRole
   content: string
   name?: string
@@ -46,7 +46,7 @@ export interface OpenRouterChatMessage {
 
 export interface OpenRouterChatCompletionRequest {
   model: string
-  messages: OpenRouterChatMessage[]
+  messages: OpenRouterChatMsg[]
   temperature?: number
   top_p?: number
   max_output_tokens?: number
@@ -57,7 +57,7 @@ export interface OpenRouterChatCompletionRequest {
 
 export interface OpenRouterChatCompletionChoice {
   index: number
-  message: OpenRouterChatMessage
+  message: OpenRouterChatMsg
   finish_reason: 'stop' | 'length' | 'tool_calls' | string | null
 }
 

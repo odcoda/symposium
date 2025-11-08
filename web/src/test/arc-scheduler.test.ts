@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import { calculateRequestLogits, logitsToProbabilities } from '@/lib/scheduler'
 import {
-  applySchedulerMessageUpdate,
-  createPersonalitySchedulerState,
+  applySchedulerMsgUpdate,
+  createNymSchedulerState,
 } from '@/stores/app-store'
-import type { Message, Personality, RequestQueueItem, SchedulerSettings } from '@/types'
+import type { AppView, Msg, Nym, RequestQueueItem, SchedulerSettings } from '@/types'
+import type { NymSchedulerStateMap } from '@/types/scheduler'
 
-describe('conversation scheduling algorithm', () => {
-  it('updates logits and probabilities as messages arrive', () => {
+describe('arc scheduling algorithm', () => {
+  it('updates logits and probabilities as msgs arrive', () => {
     const timestamp = '2024-01-01T00:00:00.000Z'
-    const personalities: Record<string, Personality> = {
+    const nyms: Record<string, Nym> = {
       alpha: {
         id: 'alpha',
         name: 'Alpha',
@@ -56,8 +57,8 @@ describe('conversation scheduling algorithm', () => {
     const buildRequest = (authorId: string): RequestQueueItem => ({
       id: `${authorId}-request`,
       authorId,
-      conversationId: 'conversation',
-      messageId: `${authorId}-message`,
+      arcId: 'arc',
+      msgId: `${authorId}-msg`,
       enqueuedAt: 0,
       status: 'queued',
     })
@@ -65,28 +66,28 @@ describe('conversation scheduling algorithm', () => {
     const queuedRequests = [buildRequest('alpha'), buildRequest('beta')]
 
     const baseState = {
-      personalities,
-      conversations: {},
-      messages: {},
-      activeConversationId: null,
+      nyms,
+      arcs: {},
+      msgs: {},
+      activeArcId: null,
       scheduler: {
         settings: schedulerSettings,
-        queue: [],
-        inFlightIds: [],
-        personalityStates: {
-          alpha: createPersonalitySchedulerState(0),
-          beta: createPersonalitySchedulerState(0),
-        },
-        messageCounter: 0,
+        queue: [] as RequestQueueItem[],
+        inFlightIds: [] as string[],
+        nymStates: {
+          alpha: createNymSchedulerState(0),
+          beta: createNymSchedulerState(0),
+        } as NymSchedulerStateMap,
+        msgCounter: 0,
       },
-      ui: { activeView: 'conversations', isSettingsOpen: false },
+      ui: { activeView: 'arcs' as AppView, isSettingsOpen: false },
     }
 
     const recordStep = (state: typeof baseState) => {
       const logits = calculateRequestLogits(
         queuedRequests,
-        state.personalities,
-        state.scheduler.personalityStates,
+        state.nyms,
+        state.scheduler.nymStates,
       )
       const probabilities = logitsToProbabilities(
         logits,
@@ -95,10 +96,10 @@ describe('conversation scheduling algorithm', () => {
       return { logits, probabilities }
     }
 
-    const testMessages: Array<Message> = [
+    const testMsgs: Array<Msg> = [
       {
         id: 'm1',
-        conversationId: 'conversation',
+        arcId: 'arc',
         authorId: 'user',
         authorRole: 'user',
         content: 'Hey Beta, status update?',
@@ -107,42 +108,42 @@ describe('conversation scheduling algorithm', () => {
         status: 'complete',
       },
       {
-      id: 'm2',
-      conversationId: 'conversation',
-      authorId: 'user',
-      authorRole: 'user',
-      content: 'Alpha should weigh in too.',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      status: 'complete',
+        id: 'm2',
+        arcId: 'arc',
+        authorId: 'user',
+        authorRole: 'user',
+        content: 'Alpha should weigh in too.',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        status: 'complete',
       },
       {
-      id: 'm3',
-      conversationId: 'conversation',
-      authorId: 'beta',
-      authorRole: 'assistant',
-      content: 'Here is my update.',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      status: 'complete',
+        id: 'm3',
+        arcId: 'arc',
+        authorId: 'beta',
+        authorRole: 'assistant',
+        content: 'Here is my update.',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        status: 'complete',
       },
       {
-      id: 'm4',
-      conversationId: 'conversation',
-      authorId: 'user',
-      authorRole: 'user',
-      content: 'Beta, please respond again!',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      status: 'complete',
+        id: 'm4',
+        arcId: 'arc',
+        authorId: 'user',
+        authorRole: 'user',
+        content: 'Beta, please respond again!',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        status: 'complete',
       },
     ]
     const recorded = [recordStep(baseState)]
     let state = baseState
-    testMessages.forEach((message) => {
+    testMsgs.forEach((msg) => {
       state = {
         ...state,
-        scheduler: applySchedulerMessageUpdate(state, message)
+        scheduler: applySchedulerMsgUpdate(state, msg),
       }
       recorded.push(recordStep(state))
     })

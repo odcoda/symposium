@@ -3,107 +3,107 @@ import { createJSONStorage, devtools, persist } from 'zustand/middleware'
 
 import type {
   AppView,
-  Conversation,
-  Message,
-  MessageStatus,
-  Personality,
+  Arc,
+  Msg,
+  MsgStatus,
+  Nym,
   RequestQueueItem,
   SchedulerSettings,
 } from '@/types'
-import type { PersonalitySchedulerState, PersonalitySchedulerStateMap } from '@/types/scheduler'
+import type { NymSchedulerState, NymSchedulerStateMap } from '@/types/scheduler'
 import { createId } from '@/utils/id'
 import { resolveStorage } from '@/utils/storage'
 
 const STORE_KEY = 'symposium-app-state'
-const STORE_VERSION = 1
+const STORE_VERSION = 2
 
 const DEFAULT_TRIGGER_MODE: SchedulerSettings['triggerMode'] = 'medium'
 const DEFAULT_SELECTION_TEMPERATURE = 1
 const DEFAULT_POLITENESS_DECAY = 0.8
 
-export const createPersonalitySchedulerState = (
-  messageCounter: number,
-): PersonalitySchedulerState => ({
+export const createNymSchedulerState = (
+  msgCounter: number,
+): NymSchedulerState => ({
   mentionScore: 0,
   politenessScore: 0,
-  lastUpdatedMessageIndex: messageCounter,
-  lastSpokeMessageIndex: null,
+  lastUpdatedMsgIndex: msgCounter,
+  lastSpokeMsgIndex: null,
 })
 
-export const applySchedulerMessageUpdate = (
+export const applySchedulerMsgUpdate = (
   state: BaseState,
-  message: Message,
+  msg: Msg,
 ): SchedulerState => {
-  const nextMessageIndex = state.scheduler.messageCounter + 1
+  const nextMsgIndex = state.scheduler.msgCounter + 1
 
-  const updatedPersonalityStates = Object.values(state.personalities).reduce<
-    PersonalitySchedulerStateMap
-  >((acc, personality) => {
+  const updatedNymStates = Object.values(state.nyms).reduce<
+    NymSchedulerStateMap
+  >((acc, nym) => {
     const existing =
-      state.scheduler.personalityStates[personality.id] ??
-      createPersonalitySchedulerState(state.scheduler.messageCounter)
+      state.scheduler.nymStates[nym.id] ??
+      createNymSchedulerState(state.scheduler.msgCounter)
 
-    const delta = Math.max(0, nextMessageIndex - existing.lastUpdatedMessageIndex)
-    const halfLife = Math.max(1, personality.politenessHalfLife)
+    const delta = Math.max(0, nextMsgIndex - existing.lastUpdatedMsgIndex)
+    const halfLife = Math.max(1, nym.politenessHalfLife)
     const decayFactor = Math.pow(0.5, delta / halfLife)
     const decayedPoliteness =
       existing.politenessScore * decayFactor * state.scheduler.settings.politenessDecayMultiplier
 
-    acc[personality.id] = {
+    acc[nym.id] = {
       ...existing,
       politenessScore: decayedPoliteness,
-      lastUpdatedMessageIndex: nextMessageIndex,
+      lastUpdatedMsgIndex: nextMsgIndex,
     }
 
     return acc
   }, {})
 
-  const lowerContent = message.content.toLowerCase()
+  const lowerContent = msg.content.toLowerCase()
   if (lowerContent.length > 0) {
-    Object.values(state.personalities).forEach((personality) => {
-      if (message.authorId === personality.id) {
+    Object.values(state.nyms).forEach((nym) => {
+      if (msg.authorId === nym.id) {
         return
       }
 
-      const personaState = updatedPersonalityStates[personality.id]
+      const personaState = updatedNymStates[nym.id]
       if (!personaState) {
         return
       }
 
-      const name = personality.name.trim().toLowerCase()
+      const name = nym.name.trim().toLowerCase()
       if (!name) {
         return
       }
 
       if (lowerContent.includes(name)) {
-        updatedPersonalityStates[personality.id] = {
+        updatedNymStates[nym.id] = {
           ...personaState,
-          mentionScore: personaState.mentionScore + personality.mentionBoost,
+          mentionScore: personaState.mentionScore + nym.mentionBoost,
         }
       }
     })
   }
 
-  if (message.authorRole === 'assistant') {
-    const personality = state.personalities[message.authorId]
-    if (personality) {
+  if (msg.authorRole === 'assistant') {
+    const nym = state.nyms[msg.authorId]
+    if (nym) {
       const personaState =
-        updatedPersonalityStates[personality.id] ??
-        createPersonalitySchedulerState(state.scheduler.messageCounter)
+        updatedNymStates[nym.id] ??
+        createNymSchedulerState(state.scheduler.msgCounter)
 
-      updatedPersonalityStates[personality.id] = {
+      updatedNymStates[nym.id] = {
         ...personaState,
         mentionScore: 0,
-        politenessScore: personaState.politenessScore - personality.politenessPenalty,
-        lastSpokeMessageIndex: nextMessageIndex,
+        politenessScore: personaState.politenessScore - nym.politenessPenalty,
+        lastSpokeMsgIndex: nextMsgIndex,
       }
     }
   }
 
   return {
     ...state.scheduler,
-    personalityStates: updatedPersonalityStates,
-    messageCounter: nextMessageIndex,
+    nymStates: updatedNymStates,
+    msgCounter: nextMsgIndex,
   }
 }
 
@@ -111,8 +111,8 @@ interface SchedulerState {
   settings: SchedulerSettings
   queue: RequestQueueItem[]
   inFlightIds: string[]
-  personalityStates: PersonalitySchedulerStateMap
-  messageCounter: number
+  nymStates: NymSchedulerStateMap
+  msgCounter: number
 }
 
 interface UIState {
@@ -121,32 +121,32 @@ interface UIState {
 }
 
 interface BaseState {
-  personalities: Record<string, Personality>
-  conversations: Record<string, Conversation>
-  messages: Record<string, Message>
-  activeConversationId: string | null
+  nyms: Record<string, Nym>
+  arcs: Record<string, Arc>
+  msgs: Record<string, Msg>
+  activeArcId: string | null
   scheduler: SchedulerState
   ui: UIState
 }
 
-type CreateConversationInput = {
+type CreateArcInput = {
   id?: string
   title?: string
   participantIds?: string[]
-  activePersonalityIds?: string[]
+  activeNymIds?: string[]
 }
 
-type AppendMessageInput = {
+type AppendMsgInput = {
   id?: string
   authorId: string
-  authorRole: Message['authorRole']
+  authorRole: Msg['authorRole']
   content: string
-  personalityId?: string
-  status?: MessageStatus
+  nymId?: string
+  status?: MsgStatus
   createdAt?: string
 }
 
-type CreatePersonalityInput = {
+type CreateNymInput = {
   id?: string
   name?: string
   model?: string
@@ -171,14 +171,14 @@ type AppActions = {
   setActiveView: (view: AppView) => void
   openSettings: () => void
   closeSettings: () => void
-  setActiveConversation: (conversationId: string) => void
-  createConversation: (input?: CreateConversationInput) => string
-  removeConversation: (conversationId: string) => void
-  appendMessage: (conversationId: string, input: AppendMessageInput) => string | undefined
-  updateMessage: (messageId: string, updates: Partial<Message>) => void
-  createPersonality: (input?: CreatePersonalityInput) => string
-  updatePersonality: (personalityId: string, updates: Partial<Personality>) => void
-  deletePersonality: (personalityId: string) => void
+  setActiveArc: (arcId: string) => void
+  createArc: (input?: CreateArcInput) => string
+  removeArc: (arcId: string) => void
+  appendMsg: (arcId: string, input: AppendMsgInput) => string | undefined
+  updateMsg: (msgId: string, updates: Partial<Msg>) => void
+  createNym: (input?: CreateNymInput) => string
+  updateNym: (nymId: string, updates: Partial<Nym>) => void
+  deleteNym: (nymId: string) => void
   updateSchedulerSettings: (settings: Partial<SchedulerSettings>) => void
   queueRequest: (input: QueueRequestInput) => string
   updateQueueItem: (requestId: string, updates: Partial<RequestQueueItem>) => void
@@ -188,9 +188,23 @@ type AppActions = {
 
 export type AppState = BaseState & { actions: AppActions }
 
+type LegacyArc = Omit<Arc, 'msgIds' | 'activeNymIds'> & {
+  messageIds?: string[]
+  activePersonalityIds?: string[]
+}
+
+type LegacyMsg = Omit<Msg, 'arcId' | 'nymId'> & {
+  conversationId?: string
+  personalityId?: string
+}
+
 type PersistedState = Partial<
-  Pick<BaseState, 'personalities' | 'conversations' | 'messages' | 'activeConversationId'>
+  Pick<BaseState, 'nyms' | 'arcs' | 'msgs' | 'activeArcId'>
 > & {
+  personalities?: Record<string, Nym>
+  conversations?: Record<string, LegacyArc>
+  messages?: Record<string, LegacyMsg>
+  activeConversationId?: string | null
   scheduler?: {
     settings?: SchedulerSettings
   }
@@ -199,12 +213,69 @@ type PersistedState = Partial<
   }
 }
 
+type NormalisedDomainState = {
+  nyms: Record<string, Nym>
+  arcs: Record<string, Arc>
+  msgs: Record<string, Msg>
+  activeArcId: string | null
+}
+
+const convertLegacyMsgs = (legacy?: Record<string, LegacyMsg>): Record<string, Msg> => {
+  if (!legacy) {
+    return {}
+  }
+
+  return Object.entries(legacy).reduce<Record<string, Msg>>((acc, [id, legacyMsg]) => {
+    const { conversationId, personalityId, ...rest } = legacyMsg
+    if (!conversationId) {
+      return acc
+    }
+
+    acc[id] = {
+      ...rest,
+      arcId: conversationId,
+      nymId: personalityId,
+    }
+    return acc
+  }, {})
+}
+
+const convertLegacyArcs = (legacy?: Record<string, LegacyArc>): Record<string, Arc> => {
+  if (!legacy) {
+    return {}
+  }
+
+  return Object.entries(legacy).reduce<Record<string, Arc>>((acc, [id, legacyArc]) => {
+    const { messageIds, activePersonalityIds, ...rest } = legacyArc
+    acc[id] = {
+      ...rest,
+      msgIds: messageIds ?? [],
+      activeNymIds: activePersonalityIds ?? [],
+    }
+    return acc
+  }, {})
+}
+
+const normalisePersistedState = (state: PersistedState): NormalisedDomainState => {
+  const nyms = state.nyms ?? state.personalities ?? {}
+  const arcs = state.arcs ?? convertLegacyArcs(state.conversations)
+  const msgs = state.msgs ?? convertLegacyMsgs(state.messages)
+  const activeArcId = state.activeArcId ?? state.activeConversationId ?? null
+
+  return {
+    nyms: nyms as Record<string, Nym>,
+    arcs,
+    msgs,
+    activeArcId,
+  }
+}
+
 
 const createInitialState = (): BaseState => {
   const timestamp = new Date().toISOString()
 
-  const defaultPersonality: Personality = {
-    id: 'personality-default',
+  const defaultNym: Nym = {
+    id: 'nym-default',
     name: 'Generalist',
     model: 'openrouter/auto',
     description: 'A balanced collaborator focused on thoughtful, concise responses.',
@@ -219,41 +290,41 @@ const createInitialState = (): BaseState => {
     updatedAt: timestamp,
   }
 
-  const defaultConversationId = 'conversation-welcome'
-  const defaultMessageId = 'message-welcome'
+  const defaultArcId = 'arc-welcome'
+  const defaultMsgId = 'msg-welcome'
 
-  const defaultMessage: Message = {
-    id: defaultMessageId,
-    conversationId: defaultConversationId,
-    authorId: defaultPersonality.id,
+  const defaultMsg: Msg = {
+    id: defaultMsgId,
+    arcId: defaultArcId,
+    authorId: defaultNym.id,
     authorRole: 'assistant',
-    content: 'Welcome to Symposium! Start a conversation or customise personalities to get going.',
+    content: 'Welcome to Symposium! Start an arc or customise nyms to get going.',
     createdAt: timestamp,
     updatedAt: timestamp,
     status: 'complete',
   }
 
-  const defaultConversation: Conversation = {
-    id: defaultConversationId,
+  const defaultArc: Arc = {
+    id: defaultArcId,
     title: 'Welcome Chat',
-    participantIds: ['user', defaultPersonality.id],
-    messageIds: [defaultMessageId],
-    activePersonalityIds: [defaultPersonality.id],
+    participantIds: ['user', defaultNym.id],
+    msgIds: [defaultMsgId],
+    activeNymIds: [defaultNym.id],
     createdAt: timestamp,
     updatedAt: timestamp,
   }
 
   return {
-    personalities: {
-      [defaultPersonality.id]: defaultPersonality,
+    nyms: {
+      [defaultNym.id]: defaultNym,
     },
-    conversations: {
-      [defaultConversation.id]: defaultConversation,
+    arcs: {
+      [defaultArc.id]: defaultArc,
     },
-    messages: {
-      [defaultMessage.id]: defaultMessage,
+    msgs: {
+      [defaultMsg.id]: defaultMsg,
     },
-    activeConversationId: defaultConversation.id,
+    activeArcId: defaultArc.id,
     scheduler: {
       settings: {
         maxConcurrent: 2,
@@ -266,13 +337,13 @@ const createInitialState = (): BaseState => {
       },
       queue: [],
       inFlightIds: [],
-      personalityStates: {
-        [defaultPersonality.id]: createPersonalitySchedulerState(0),
+      nymStates: {
+        [defaultNym.id]: createNymSchedulerState(0),
       },
-      messageCounter: 0,
+      msgCounter: 0,
     },
     ui: {
-      activeView: 'conversations',
+      activeView: 'arcs',
       isSettingsOpen: false,
     },
   }
@@ -318,143 +389,144 @@ export const useAppStore = create<AppState>()(
               false,
               'ui/closeSettings',
             ),
-          setActiveConversation: (conversationId) =>
+          setActiveArc: (arcId) =>
             set(
               (state) => {
-                if (!state.conversations[conversationId]) {
+                if (!state.arcs[arcId]) {
                   return {}
                 }
 
                 return {
-                  activeConversationId: conversationId,
+                  activeArcId: arcId,
                   ui: {
                     ...state.ui,
-                    activeView: 'conversations',
+                    activeView: 'arcs',
                   },
                 }
               },
               false,
-              'conversations/setActive',
+              'arcs/setActive',
             ),
-          createConversation: (input) => {
+          createArc: (input) => {
             const id = input?.id ?? createId()
-            const title = input?.title?.trim() || 'New Conversation'
+            const title = input?.title?.trim() || 'New Arc'
             const now = new Date().toISOString()
 
-            const conversation: Conversation = {
+            const arc: Arc = {
               id,
               title,
               participantIds: input?.participantIds ?? [],
-              messageIds: [],
-              activePersonalityIds: input?.activePersonalityIds ?? [],
+              msgIds: [],
+              activeNymIds: input?.activeNymIds ?? [],
               createdAt: now,
               updatedAt: now,
             }
 
             set(
               (state) => ({
-                conversations: {
-                  ...state.conversations,
-                  [conversation.id]: conversation,
+                arcs: {
+                  ...state.arcs,
+                  [arc.id]: arc,
                 },
-                activeConversationId: conversation.id,
+                activeArcId: arc.id,
                 ui: {
                   ...state.ui,
-                  activeView: 'conversations',
+                  activeView: 'arcs',
                 },
               }),
               false,
-              'conversations/create',
+              'arcs/create',
             )
 
-            return conversation.id
+            return arc.id
           },
-          removeConversation: (conversationId) =>
+          removeArc: (arcId) =>
             set(
               (state) => {
-                if (!state.conversations[conversationId]) {
+                if (!state.arcs[arcId]) {
                   return {}
                 }
 
-                const rest = { ...state.conversations }
-                delete rest[conversationId]
-                const remainingMessages = { ...state.messages }
+                const rest = { ...state.arcs }
+                delete rest[arcId]
+                const remainingMsgs = { ...state.msgs }
 
-                Object.entries(remainingMessages).forEach(([messageId, message]) => {
-                  if (message.conversationId === conversationId) {
-                    delete remainingMessages[messageId]
+                Object.entries(remainingMsgs).forEach(([msgId, msg]) => {
+                  if (msg.arcId === arcId) {
+                    delete remainingMsgs[msgId]
                   }
                 })
 
-                const nextConversationId =
-                  state.activeConversationId === conversationId
+                const nextArcId =
+                  state.activeArcId === arcId
                     ? Object.keys(rest)[0] ?? null
-                    : state.activeConversationId
+                    : state.activeArcId
 
                 return {
-                  conversations: rest,
-                  messages: remainingMessages,
-                  activeConversationId: nextConversationId,
+                  arcs: rest,
+                  msgs: remainingMsgs,
+                  activeArcId: nextArcId,
                 }
               },
               false,
-              'conversations/remove',
+              'arcs/remove',
             ),
-          appendMessage: (conversationId, input) => {
-            const conversation = get().conversations[conversationId]
-            if (!conversation) {
+          appendMsg: (arcId, input) => {
+            const arc = get().arcs[arcId]
+            if (!arc) {
               return undefined
             }
 
             const id = input.id ?? createId()
             const createdAt = input.createdAt ?? new Date().toISOString()
-            const status: MessageStatus = input.status ?? 'complete'
+            const status: MsgStatus = input.status ?? 'complete'
 
-            const message: Message = {
+            const msg: Msg = {
               id,
-              conversationId,
+              arcId,
               authorId: input.authorId,
               authorRole: input.authorRole,
               content: input.content,
               createdAt,
               updatedAt: createdAt,
               status,
+              nymId: input.nymId,
             }
 
             set(
               (state) => ({
-                messages: {
-                  ...state.messages,
-                  [id]: message,
+                msgs: {
+                  ...state.msgs,
+                  [id]: msg,
                 },
-                conversations: {
-                  ...state.conversations,
-                  [conversationId]: {
-                    ...state.conversations[conversationId],
-                    messageIds: [...state.conversations[conversationId].messageIds, id],
+                arcs: {
+                  ...state.arcs,
+                  [arcId]: {
+                    ...state.arcs[arcId],
+                    msgIds: [...state.arcs[arcId].msgIds, id],
                     updatedAt: createdAt,
                   },
                 },
-                scheduler: applySchedulerMessageUpdate(state, message),
+                scheduler: applySchedulerMsgUpdate(state, msg),
               }),
               false,
-              'messages/append',
+              'msgs/append',
             )
 
             return id
           },
-          updateMessage: (messageId, updates) =>
+          updateMsg: (msgId, updates) =>
             set(
               (state) => {
-                const existing = state.messages[messageId]
+                const existing = state.msgs[msgId]
                 if (!existing) {
                   return {}
                 }
 
                 return {
-                  messages: {
-                    ...state.messages,
-                    [messageId]: {
+                  msgs: {
+                    ...state.msgs,
+                    [msgId]: {
                       ...existing,
                       ...updates,
                       id: existing.id,
@@ -463,15 +535,15 @@ export const useAppStore = create<AppState>()(
                 }
               },
               false,
-              'messages/update',
+              'msgs/update',
             ),
-          createPersonality: (input) => {
+          createNym: (input) => {
             const id = input?.id ?? createId()
             const now = new Date().toISOString()
 
-            const personality: Personality = {
+            const nym: Nym = {
               id,
-              name: input?.name?.trim() || 'New Personality',
+              name: input?.name?.trim() || 'New Nym',
               model: input?.model ?? 'openrouter/auto',
               description: input?.description ?? '',
               prompt:
@@ -488,36 +560,36 @@ export const useAppStore = create<AppState>()(
 
             set(
               (state) => ({
-                personalities: {
-                  ...state.personalities,
-                  [personality.id]: personality,
+                nyms: {
+                  ...state.nyms,
+                  [nym.id]: nym,
                 },
                 scheduler: {
                   ...state.scheduler,
-                  personalityStates: {
-                    ...state.scheduler.personalityStates,
-                    [personality.id]: createPersonalitySchedulerState(state.scheduler.messageCounter),
+                  nymStates: {
+                    ...state.scheduler.nymStates,
+                    [nym.id]: createNymSchedulerState(state.scheduler.msgCounter),
                   },
                 },
               }),
               false,
-              'personalities/create',
+              'nyms/create',
             )
 
-            return personality.id
+            return nym.id
           },
-          updatePersonality: (personalityId, updates) =>
+          updateNym: (nymId, updates) =>
             set(
               (state) => {
-                const existing = state.personalities[personalityId]
+                const existing = state.nyms[nymId]
                 if (!existing) {
                   return {}
                 }
 
                 return {
-                  personalities: {
-                    ...state.personalities,
-                    [personalityId]: {
+                  nyms: {
+                    ...state.nyms,
+                    [nymId]: {
                       ...existing,
                       ...updates,
                       id: existing.id,
@@ -527,47 +599,47 @@ export const useAppStore = create<AppState>()(
                 }
               },
               false,
-              'personalities/update',
+              'nyms/update',
             ),
-          deletePersonality: (personalityId) =>
+          deleteNym: (nymId) =>
             set(
               (state) => {
-                if (!state.personalities[personalityId]) {
+                if (!state.nyms[nymId]) {
                   return {}
                 }
 
-                const rest = { ...state.personalities }
-                delete rest[personalityId]
+                const rest = { ...state.nyms }
+                delete rest[nymId]
 
-                const updatedConversations = Object.fromEntries(
-                  Object.entries(state.conversations).map(([id, conversation]) => [
+                const updatedArcs = Object.fromEntries(
+                  Object.entries(state.arcs).map(([id, arc]) => [
                     id,
                     {
-                      ...conversation,
-                      participantIds: conversation.participantIds.filter(
-                        (participantId) => participantId !== personalityId,
+                      ...arc,
+                      participantIds: arc.participantIds.filter(
+                        (participantId) => participantId !== nymId,
                       ),
-                      activePersonalityIds: conversation.activePersonalityIds.filter(
-                        (participantId) => participantId !== personalityId,
+                      activeNymIds: arc.activeNymIds.filter(
+                        (participantId) => participantId !== nymId,
                       ),
                     },
                   ]),
                 )
 
-                const remainingSchedulerStates = { ...state.scheduler.personalityStates }
-                delete remainingSchedulerStates[personalityId]
+                const remainingSchedulerStates = { ...state.scheduler.nymStates }
+                delete remainingSchedulerStates[nymId]
 
                 return {
-                  personalities: rest,
-                  conversations: updatedConversations,
+                  nyms: rest,
+                  arcs: updatedArcs,
                   scheduler: {
                     ...state.scheduler,
-                    personalityStates: remainingSchedulerStates,
+                    nymStates: remainingSchedulerStates,
                   },
                 }
               },
               false,
-              'personalities/delete',
+              'nyms/delete',
             ),
           updateSchedulerSettings: (settings) =>
             set(
@@ -596,9 +668,9 @@ export const useAppStore = create<AppState>()(
                     ...state.scheduler.queue,
                     {
                       id,
-                      conversationId: input.conversationId,
+                      arcId: input.arcId,
                       authorId: input.authorId,
-                      messageId: input.messageId,
+                      msgId: input.msgId,
                       enqueuedAt,
                       status,
                       error: input.error,
@@ -673,33 +745,42 @@ export const useAppStore = create<AppState>()(
           }
 
           const typed = persistedState as PersistedState
-          const { scheduler, ui, ...rest } = typed
+          const { scheduler, ui } = typed
+          const domainState = normalisePersistedState(typed)
 
-          const mergedPersonalities = {
-            ...currentState.personalities,
-            ...(rest.personalities ?? {}),
+          const mergedNyms = {
+            ...currentState.nyms,
+            ...domainState.nyms,
+          }
+          const mergedArcs = {
+            ...currentState.arcs,
+            ...domainState.arcs,
+          }
+          const mergedMsgs = {
+            ...currentState.msgs,
+            ...domainState.msgs,
           }
 
-          const mergedPersonalityStates = Object.keys(mergedPersonalities).reduce<
-            PersonalitySchedulerStateMap
-          >((acc, personalityId) => {
-            const existing = currentState.scheduler.personalityStates[personalityId]
-            acc[personalityId] =
-              existing ?? createPersonalitySchedulerState(currentState.scheduler.messageCounter)
+          const mergedNymStates = Object.keys(mergedNyms).reduce<NymSchedulerStateMap>((acc, nymId) => {
+            const existing = currentState.scheduler.nymStates[nymId]
+            acc[nymId] =
+              existing ?? createNymSchedulerState(currentState.scheduler.msgCounter)
             return acc
           }, {})
 
           return {
             ...currentState,
-            ...rest,
-            personalities: mergedPersonalities,
+            nyms: mergedNyms,
+            arcs: mergedArcs,
+            msgs: mergedMsgs,
+            activeArcId: domainState.activeArcId ?? currentState.activeArcId,
             scheduler: {
               ...currentState.scheduler,
               settings: {
                 ...currentState.scheduler.settings,
                 ...(scheduler?.settings ?? {}),
               },
-              personalityStates: mergedPersonalityStates,
+              nymStates: mergedNymStates,
             },
             ui: {
               ...currentState.ui,
@@ -708,10 +789,10 @@ export const useAppStore = create<AppState>()(
           }
         },
         partialize: (state): PersistedState => ({
-          personalities: state.personalities,
-          conversations: state.conversations,
-          messages: state.messages,
-          activeConversationId: state.activeConversationId,
+          nyms: state.nyms,
+          arcs: state.arcs,
+          msgs: state.msgs,
+          activeArcId: state.activeArcId,
           scheduler: {
             settings: state.scheduler.settings,
           },
@@ -726,32 +807,33 @@ export const useAppStore = create<AppState>()(
           }
 
           const typed = persistedState as PersistedState
+          const domainState = normalisePersistedState(typed)
 
-          const mergedPersonalities = {
-            ...base.personalities,
-            ...(typed.personalities ?? {}),
+          const mergedNyms = {
+            ...base.nyms,
+            ...domainState.nyms,
+          }
+          const mergedArcs = {
+            ...base.arcs,
+            ...domainState.arcs,
+          }
+          const mergedMsgs = {
+            ...base.msgs,
+            ...domainState.msgs,
           }
 
-          const mergedPersonalityStates = Object.keys(mergedPersonalities).reduce<
-            PersonalitySchedulerStateMap
-          >((acc, personalityId) => {
-            acc[personalityId] =
-              base.scheduler.personalityStates[personalityId] ??
-              createPersonalitySchedulerState(base.scheduler.messageCounter)
+          const mergedNymStates = Object.keys(mergedNyms).reduce<NymSchedulerStateMap>((acc, nymId) => {
+            acc[nymId] =
+              base.scheduler.nymStates[nymId] ??
+              createNymSchedulerState(base.scheduler.msgCounter)
             return acc
           }, {})
 
           return {
-            personalities: mergedPersonalities,
-            conversations: {
-              ...base.conversations,
-              ...(typed.conversations ?? {}),
-            },
-            messages: {
-              ...base.messages,
-              ...(typed.messages ?? {}),
-            },
-            activeConversationId: typed.activeConversationId ?? base.activeConversationId,
+            nyms: mergedNyms,
+            arcs: mergedArcs,
+            msgs: mergedMsgs,
+            activeArcId: domainState.activeArcId ?? base.activeArcId,
             scheduler: {
               ...base.scheduler,
               settings: {
@@ -760,8 +842,8 @@ export const useAppStore = create<AppState>()(
               },
               queue: [],
               inFlightIds: [],
-              personalityStates: mergedPersonalityStates,
-              messageCounter: base.scheduler.messageCounter,
+              nymStates: mergedNymStates,
+              msgCounter: base.scheduler.msgCounter,
             },
             ui: {
               activeView: typed.ui?.activeView ?? base.ui.activeView,

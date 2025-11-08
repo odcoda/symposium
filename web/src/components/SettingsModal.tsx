@@ -45,7 +45,7 @@ export const SettingsModal = ({ onClose }: SettingsModalProps) => {
       >
         <header className={styles.modalHeader}>
           <h2 id="settings-modal-title" className={styles.modalTitle}>
-            Conversation settings
+            Arc settings
           </h2>
           <button type="button" className={styles.closeButton} onClick={onClose}>
             Close
@@ -119,7 +119,7 @@ export const SettingsModal = ({ onClose }: SettingsModalProps) => {
           </div>
 
           <div className={styles.checkboxRow}>
-            <span className={styles.fieldLabel}>Auto-start chat on new conversation</span>
+            <span className={styles.fieldLabel}>Auto-start chat on new arc</span>
             <input
               type="checkbox"
               checked={settings.autoStart}

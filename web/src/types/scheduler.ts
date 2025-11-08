@@ -1,9 +1,8 @@
-export interface PersonalitySchedulerState {
+export interface NymSchedulerState {
   mentionScore: number
   politenessScore: number
-  lastUpdatedMessageIndex: number
-  lastSpokeMessageIndex: number | null
+  lastUpdatedMsgIndex: number
+  lastSpokeMsgIndex: number | null
 }
 
-export type ConversationSchedulerState = Record<string, PersonalitySchedulerState>
-export type SchedulerState = Record<string, Record<string, ConversationSchedulerState>>
+export type NymSchedulerStateMap = Record<string, NymSchedulerState>

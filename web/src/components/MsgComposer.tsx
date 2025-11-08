@@ -3,20 +3,20 @@ import type { FormEventHandler, KeyboardEventHandler } from 'react'
 
 import { useAppStore } from '@/stores/app-store'
 
-import styles from './MessageComposer.module.css'
+import styles from './MsgComposer.module.css'
 
-type MessageComposerProps = {
-  conversationId: string
+type MsgComposerProps = {
+  arcId: string
 }
 
-export const MessageComposer = ({ conversationId }: MessageComposerProps) => {
+export const MsgComposer = ({ arcId }: MsgComposerProps) => {
   const [content, setContent] = useState('')
-  const conversation = useAppStore((state) => state.conversations[conversationId])
-  const appendMessage = useAppStore((state) => state.actions.appendMessage)
+  const arc = useAppStore((state) => state.arcs[arcId])
+  const appendMsg = useAppStore((state) => state.actions.appendMsg)
   const queueRequest = useAppStore((state) => state.actions.queueRequest)
 
   const trimmedContent = useMemo(() => content.trim(), [content])
-  const isDisabled = !conversation || trimmedContent.length === 0
+  const isDisabled = !arc || trimmedContent.length === 0
 
   const handleSubmit = () => {
     if (isDisabled) {
@@ -25,18 +25,18 @@ export const MessageComposer = ({ conversationId }: MessageComposerProps) => {
 
     const authorId = 'user'
 
-    const messageId = appendMessage(conversationId, {
+    const msgId = appendMsg(arcId, {
       authorId,
       authorRole: 'user',
       content: trimmedContent,
       status: 'complete',
     })
 
-    if (messageId && conversation) {
+    if (msgId && arc) {
       queueRequest({
-        conversationId,
+        arcId,
         authorId,
-        messageId,
+        msgId,
       })
     }
 

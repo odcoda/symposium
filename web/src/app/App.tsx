@@ -1,20 +1,17 @@
-import { ConversationsView } from '@/features/conversations/components/ConversationsView'
-import { ConversationScheduler } from '@/features/conversations/components/ConversationScheduler'
-import { PersonalitiesView } from '@/features/personalities/components/PersonalitiesView'
-import {
-  OpenRouterAuthControls,
-  OpenRouterStatusBanner,
-} from '@/features/openrouter/components/OpenRouterAuthControls'
-import { OpenRouterAuthManager } from '@/features/openrouter/components/OpenRouterAuthManager'
-import { SettingsModal } from '@/features/settings/components/SettingsModal'
+import { ArcsView } from '@/components/ArcsView'
+import { ArcScheduler } from '@/components/ArcScheduler'
+import { NymsView } from '@/components/NymsView'
+import { OpenRouterAuthControls, OpenRouterStatusBanner } from '@/components/OpenRouterAuthControls'
+import { OpenRouterAuthManager } from '@/components/OpenRouterAuthManager'
+import { SettingsModal } from '@/components/SettingsModal'
 import { useAppStore } from '@/stores/app-store'
 import type { AppView } from '@/types'
 
 import styles from './App.module.css'
 
 const APP_VIEWS: Array<{ id: AppView; label: string }> = [
-  { id: 'conversations', label: 'Conversations' },
-  { id: 'personalities', label: 'Personalities' },
+  { id: 'arcs', label: 'Arcs' },
+  { id: 'nyms', label: 'Nyms' },
 ]
 
 function App() {
@@ -23,17 +20,17 @@ function App() {
 
   const renderContent = () => {
     switch (activeView) {
-      case 'personalities':
-        return <PersonalitiesView />
-      case 'conversations':
+      case 'nyms':
+        return <NymsView />
+      case 'arcs':
       default:
-        return <ConversationsView />
+        return <ArcsView />
     }
   }
 
   return (
     <div className={styles.app}>
-      <ConversationScheduler />
+      <ArcScheduler />
       <OpenRouterAuthManager />
       <header className={styles.header}>
         <h1 className={styles.brand}>Symposium</h1>

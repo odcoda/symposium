@@ -85,13 +85,13 @@ export const OpenRouterAuthControls = () => {
 
 export const OpenRouterStatusBanner = () => {
   const { status, lastError } = useOpenRouterStore((state) => state)
-  const message = getStatusText(status, openRouterEnv.appTitle)
+  const msg = getStatusText(status, openRouterEnv.appTitle)
   const className = styles[statusToBannerClass[status] ?? 'bannerWarning']
 
   return (
     <div className={`${styles.banner} ${className}`}>
       <div className={styles.bannerContent}>
-        <span>{message}</span>
+        <span>{msg}</span>
         {status === 'error' && lastError ? <span>· {lastError}</span> : null}
       </div>
     </div>
