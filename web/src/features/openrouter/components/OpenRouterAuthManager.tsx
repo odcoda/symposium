@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { exchangeAuthorizationCode } from '@/lib/openrouter/auth'
 import { useOpenRouterStore } from '@/stores/openrouter-store'
@@ -19,10 +19,18 @@ const readQueryParams = () => {
   return { params, result }
 }
 
+const clearAuthQueryParams = (params: URLSearchParams) => {
+  AUTH_QUERY_KEYS.forEach((key) => params.delete(key))
+  const nextQuery = params.toString()
+  const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname
+  window.history.replaceState(null, document.title, nextUrl)
+}
+
 export const OpenRouterAuthManager = () => {
   const { setTokens, clearTokens, setStatus, setError } = useOpenRouterStore((state) => state.actions)
   const status = useOpenRouterStore((state) => state.status)
   const tokens = useOpenRouterStore((state) => state.tokens)
+  const lastHandledState = useRef<string | null>(null)
 
   useEffect(() => {
     if (status === 'authorizing' && !tokens) {
@@ -37,10 +45,7 @@ export const OpenRouterAuthManager = () => {
     const { params, result } = readQueryParams()
     if (result.error) {
       setError(result.error_description ?? result.error)
-      AUTH_QUERY_KEYS.forEach((key) => params.delete(key))
-      const nextQuery = params.toString()
-      const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname
-      window.history.replaceState(null, document.title, nextUrl)
+      clearAuthQueryParams(params)
       return
     }
 
@@ -48,39 +53,30 @@ export const OpenRouterAuthManager = () => {
       return
     }
 
-    let cancelled = false
+    const code = result.code
+    const state = result.state
+    if (lastHandledState.current === state) {
+      return
+    }
+    lastHandledState.current = state
+    clearAuthQueryParams(params)
 
     const run = async () => {
       try {
         setStatus('authorizing')
         const tokens = await exchangeAuthorizationCode({
-          code: result.code!,
-          state: result.state!,
+          code,
+          state,
         })
-        if (cancelled) {
-          return
-        }
         setTokens(tokens)
       } catch (error) {
-        if (cancelled) {
-          return
-        }
         const message = error instanceof Error ? error.message : 'OpenRouter authorization failed'
         setError(message)
         clearTokens()
-      } finally {
-        AUTH_QUERY_KEYS.forEach((key) => params.delete(key))
-        const nextQuery = params.toString()
-        const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname
-        window.history.replaceState(null, document.title, nextUrl)
       }
     }
 
     run()
-
-    return () => {
-      cancelled = true
-    }
   }, [clearTokens, setError, setStatus, setTokens])
 
   return null

@@ -1,3 +1,120 @@
+## 2025-11-08
+### OAuth debug
+- When we first hit the auth callback, the URL bar looks like
+http://localhost:5173/auth/callback?code=cbcbe7cb-3168-4140-b89d-77b4f7b5be96&state=cb0c7d43-bf7b-41b1-abf9-d0bb21373183
+- Local storage shows
+```
+openrouter-auth
+{
+    "state": {
+        "tokens": null,
+        "status": "signed-out"
+    },
+    "version": 0
+}
+
+openrouter:pkce
+{
+    "state": "cb0c7d43-bf7b-41b1-abf9-d0bb21373183",
+    "codeVerifier": "1LyGO6K9TFI8QA0oUHdi4R9T3nx3u7K75MUvIgAcQ5dHweRbOabLIbKkQRN84wpXWmyQMyp0UaWJJ-C57qnHVzzrQNU_I17OU6VAX12GJVAiPX2sFuHNPrf84_QDm1mg",
+    "createdAt": 1762618286871
+}
+```
+
+- we consume the session from openrouter:pkce and it gets cleared
+- we send out a request to https://openrouter.ai/api/v1/auth/keys with the correct code and state
+- BUT THEN
+- we somehow end up back running the authentication again (wtf?)
+- the session has been cleared
+
+#### StrictMode remount
+
+- StrictMode remount: createRoot(rootElement).render(<StrictMode><App /></StrictMode>) (web/src/main.tsx:13-16) means every
+  component, including OpenRouterAuthManager, is mounted, unmounted, and remounted immediately in development. React runs each
+  useEffect once, calls its cleanup, then reruns it to surface side effects.
+  - Effect logic: The auth effect (web/src/features/openrouter/components/OpenRouterAuthManager.tsx:36-84) reads the query,
+  defines run, sets status to authorizing, and awaits exchangeAuthorizationCode. StrictMode invokes the effect, and while the
+  first run() is still sitting on await fetch(...), React executes the cleanup function (lines 81-83) to simulate an unmount,
+  flipping cancelled = true. It then re-runs the effect immediately, so run() fires a second time with the same code/state
+  because the first invocation hasn’t reached the finally block that scrubs the URL yet.
+  - Result: You observe “as soon as we send out the request and await fetch(), our main event loop schedules another run()”
+  because StrictMode deliberately replays the effect before the first async work settles. The duplicate call is not coming
+  from your code, but from React’s double-effect behavior in StrictMode. Removing <StrictMode>, deferring setStatus/fetch until
+  after you’ve cleared the query params, or guarding with a useRef (e.g., bail if already handling a code) will stop the second
+  invocation.
+
+ - StrictMode remount is what’s firing run() twice: createRoot(... <StrictMode> ...) (web/src/main.tsx:13-16) makes React
+  invoke every useEffect twice in dev. Your auth effect (web/src/features/openrouter/components/OpenRouterAuthManager.tsx:36-
+  84) reads code/state, kicks off run(), then React immediately executes the cleanup and re-runs the effect. Because the URL
+  still contains code and state—you only strip them in the async finally—the second pass sees the same params and launches a
+  second run(). Meanwhile the cleanup from the first pass sets cancelled = true, so when the first fetch completes it treats
+  itself as cancelled and never calls setTokens.
+  - Best fix: make the effect idempotent by clearing the auth params before any async work so only the first pass can see
+  them. Capture result.code/state, immediately remove the keys from the URL, then run the exchange with those captured values.
+  That way StrictMode’s second invocation has nothing to do and the first pass isn’t marked cancelled before it can finish.
+  For example:
+
+```
+  useEffect(() => {
+    const { params, result } = readQueryParams()
+    if (!result.code || !result.state) return
+
+    const clearAuthQuery = () => {
+      AUTH_QUERY_KEYS.forEach((key) => params.delete(key))
+      const next = params.toString()
+      window.history.replaceState(null, document.title, next ? `${window.location.pathname}?${next}` :
+  window.location.pathname)
+    }
+
+    clearAuthQuery() // remove code/state immediately
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        setStatus('authorizing')
+        const tokens = await exchangeAuthorizationCode({ code: result.code, state: result.state })
+        if (!cancelled) setTokens(tokens)
+      } catch (error) {
+        if (!cancelled) {
+          setError(error instanceof Error ? error.message : 'OpenRouter authorization failed')
+          clearTokens()
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [clearTokens, setError, setStatus, setTokens])
+  ```
+
+  - This change keeps the nice “don’t update after unmount” guard, stops duplicate exchanges, and still ensures the URL is
+  sanitized even if the browser refreshes mid-flow. If you want extra safety in production too, you can also gate on a useRef
+  (e.g., processedRef.current === ${result.state}:${result.code}``) to prevent re-entry should a user manually reintroduce the
+  query string.
+
+- Added clearAuthQueryParams helper so the callback URL gets scrubbed immediately on error or success (web/src/features/
+  openrouter/components/OpenRouterAuthManager.tsx:6-25,34-48).
+  - Updated the auth effect to capture code/state, clear the query string before starting the async exchange, and reuse those
+  captured values so StrictMode’s duplicate effect run can’t launch a second request or cancel the first (web/src/features/
+  openrouter/components/OpenRouterAuthManager.tsx:50-92).
+
+ - OpenRouterAuthManager now tracks the last processed OAuth state in a ref and clears the callback query params before
+  launching the token exchange, so StrictMode’s duplicate effect run can’t re-trigger the flow (web/src/features/openrouter/
+  components/OpenRouterAuthManager.tsx:1-67).
+  - Removed the cancelled guard so a token returned by the first fetch is always persisted even if React simulates an
+  unmount, preventing the “scrubbed code/state but no token saved” dead-end (web/src/features/openrouter/components/
+  OpenRouterAuthManager.tsx:40-63).
+
+
+
+### writing code by hand
+- See doc/intro-for-python-devs.md
+
+## 2025-11-07
+### struggles
+I failed to write some JS/TS by hand to fix the conversation backoff code. Work in progress.
+
 ## 2025-11-06
 
 ### Scheduler backoff algorithm
