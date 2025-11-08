@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  calculateRequestLogits,
-  logitsToProbabilities,
-} from '@/features/conversations/schedulerMath'
+import { calculateRequestLogits, logitsToProbabilities } from '@/lib/scheduler'
 import {
   applySchedulerMessageUpdate,
   createPersonalitySchedulerState,
@@ -98,26 +95,18 @@ describe('conversation scheduling algorithm', () => {
       return { logits, probabilities }
     }
 
-    const recorded = [recordStep(baseState)]
-
-    const userMentionsBeta: Message = {
-      id: 'm1',
-      conversationId: 'conversation',
-      authorId: 'user',
-      authorRole: 'user',
-      content: 'Hey Beta, status update?',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      status: 'complete',
-    }
-
-    const afterUserMentionsBeta = {
-      ...baseState,
-      scheduler: applySchedulerMessageUpdate(baseState, userMentionsBeta),
-    }
-    recorded.push(recordStep(afterUserMentionsBeta))
-
-    const userMentionsAlpha: Message = {
+    const testMessages: Array<Message> = [
+      {
+        id: 'm1',
+        conversationId: 'conversation',
+        authorId: 'user',
+        authorRole: 'user',
+        content: 'Hey Beta, status update?',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        status: 'complete',
+      },
+      {
       id: 'm2',
       conversationId: 'conversation',
       authorId: 'user',
@@ -126,15 +115,8 @@ describe('conversation scheduling algorithm', () => {
       createdAt: timestamp,
       updatedAt: timestamp,
       status: 'complete',
-    }
-
-    const afterUserMentionsAlpha = {
-      ...afterUserMentionsBeta,
-      scheduler: applySchedulerMessageUpdate(afterUserMentionsBeta, userMentionsAlpha),
-    }
-    recorded.push(recordStep(afterUserMentionsAlpha))
-
-    const betaResponds: Message = {
+      },
+      {
       id: 'm3',
       conversationId: 'conversation',
       authorId: 'beta',
@@ -143,15 +125,8 @@ describe('conversation scheduling algorithm', () => {
       createdAt: timestamp,
       updatedAt: timestamp,
       status: 'complete',
-    }
-
-    const afterBetaResponds = {
-      ...afterUserMentionsAlpha,
-      scheduler: applySchedulerMessageUpdate(afterUserMentionsAlpha, betaResponds),
-    }
-    recorded.push(recordStep(afterBetaResponds))
-
-    const userRequestsBetaAgain: Message = {
+      },
+      {
       id: 'm4',
       conversationId: 'conversation',
       authorId: 'user',
@@ -160,16 +135,17 @@ describe('conversation scheduling algorithm', () => {
       createdAt: timestamp,
       updatedAt: timestamp,
       status: 'complete',
-    }
-
-    const afterUserRequestsBetaAgain = {
-      ...afterBetaResponds,
-      scheduler: applySchedulerMessageUpdate(
-        afterBetaResponds,
-        userRequestsBetaAgain,
-      ),
-    }
-    recorded.push(recordStep(afterUserRequestsBetaAgain))
+      },
+    ]
+    const recorded = [recordStep(baseState)]
+    let state = baseState
+    testMessages.forEach((message) => {
+      state = {
+        ...state,
+        scheduler: applySchedulerMessageUpdate(state, message)
+      }
+      recorded.push(recordStep(state))
+    })
 
     const expectedLogits = [
       [0.6, 0.4],

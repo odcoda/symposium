@@ -1,4 +1,36 @@
 ## 2025-11-08
+### Scheduler Refactor
+
+  - Scheduling math/selection now live in web/src/lib/scheduler/math.ts:1 and web/src/lib/scheduler/selection.ts:6, exposing
+  temperature clamping, logit math, slot derivation, and queue selection through web/src/lib/scheduler/index.ts:1 so the logic
+  can evolve independently of React.
+  - Scheduler state types moved to web/src/types/scheduler.ts:1 and web/src/types/index.ts:1, and the store now consumes them
+  (web/src/stores/app-store.ts:4 & web/src/stores/app-store.ts:24) to avoid UI-level dependencies in the new library.
+  - ConversationScheduler imports the new helpers and its effect now delegates slot calculation and request selection to the
+  library while guarding for missing conversations (web/src/features/conversations/components/ConversationScheduler.tsx:1 and
+  web/src/features/conversations/components/ConversationScheduler.tsx:167), eliminating the old inline scheduling logic.
+  - Scheduler-focused tests now execute against the library entry points (web/src/features/conversations/__tests__/scheduler-
+  algorithm.test.ts:3), and the legacy feature-level web/src/features/conversations/schedulerMath.ts file was removed.
+
+### LocalStorage vs SessionStorage
+how are Local storage and Session storage different? should I be storing things in one or the other?
+
+localStorage and sessionStorage are both Web Storage APIs, but they differ in scope and lifetime:
+
+  - Persistence: localStorage survives browser restarts and new tabs. sessionStorage is wiped when the tab or window is closed
+  (a separate storage per tab).
+  - Sharing: Every tab from the same origin shares the same localStorage. sessionStorage is isolated to the specific tab/window
+  where it was created.
+  - Capacity & API: Both offer about 5–10 MB depending on the browser, expose the same synchronous setItem/getItem/removeItem
+  API, and store only strings.
+
+  Use localStorage when you want state to persist across reloads and tabs (e.g., user preferences, cached auth tokens). Use
+  sessionStorage for short-lived data that should vanish when the tab closes or shouldn’t be visible to other tabs (e.g.,
+  multi-step form progress, CSRF tokens tied to a specific tab).
+
+  In our app, long-lived things like conversations, settings, and OAuth tokens belong in localStorage so users resume where
+  they left off. sessionStorage would only make sense if we had tab-specific state that shouldn’t leak elsewhere.
+
 ### OAuth debug
 - When we first hit the auth callback, the URL bar looks like
 http://localhost:5173/auth/callback?code=cbcbe7cb-3168-4140-b89d-77b4f7b5be96&state=cb0c7d43-bf7b-41b1-abf9-d0bb21373183
@@ -92,6 +124,8 @@ openrouter:pkce
   sanitized even if the browser refreshes mid-flow. If you want extra safety in production too, you can also gate on a useRef
   (e.g., processedRef.current === ${result.state}:${result.code}``) to prevent re-entry should a user manually reintroduce the
   query string.
+
+#### The fix
 
 - Added clearAuthQueryParams helper so the callback URL gets scrubbed immediately on error or success (web/src/features/
   openrouter/components/OpenRouterAuthManager.tsx:6-25,34-48).

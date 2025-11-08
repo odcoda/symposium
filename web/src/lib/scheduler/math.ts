@@ -1,30 +1,14 @@
-import type { Personality, RequestQueueItem } from '@/types'
-import type { PersonalitySchedulerState } from '@/stores/app-store'
-
 export const MIN_SELECTION_TEMPERATURE = 0.05
 
-export const calculateRequestLogits = (
-  requests: Pick<RequestQueueItem, 'authorId'>[],
-  personalities: Record<string, Personality>,
-  personalityStates: Record<string, PersonalitySchedulerState | undefined>,
-): number[] =>
-  requests.map((request) => {
-    const personality = personalities[request.authorId]
-    const state = personalityStates[request.authorId]
-
-    const mentionScore = state?.mentionScore ?? 0
-    const politenessScore = state?.politenessScore ?? 0
-    const baseEagerness = personality?.eagerness ?? 0
-
-    return baseEagerness + mentionScore + politenessScore
-  })
+const clampSelectionTemperature = (temperature: number): number =>
+  Math.max(MIN_SELECTION_TEMPERATURE, temperature)
 
 export const logitsToProbabilities = (logits: number[], temperature: number): number[] => {
   if (!logits.length) {
     return []
   }
 
-  const safeTemperature = Math.max(MIN_SELECTION_TEMPERATURE, temperature)
+  const safeTemperature = clampSelectionTemperature(temperature)
   const maxLogit = Math.max(...logits)
   const weights = logits.map((logit) => Math.exp((logit - maxLogit) / safeTemperature))
   const totalWeight = weights.reduce((sum, value) => sum + value, 0)

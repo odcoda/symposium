@@ -50,6 +50,8 @@ export const createAuthorizationUrl = async (options?: {
     createdAt: Date.now(),
   })
 
+  /* I'm pretty sure this "clientId" / "clientFlow" is a hallucination, but I'll
+   * leave it in just in case it isn't. */
   const useClientFlow = Boolean(openRouterEnv.clientId)
   const url = new URL(useClientFlow ? AUTHORIZE_URL : AUTH_URL)
   url.searchParams.set('response_type', 'code')

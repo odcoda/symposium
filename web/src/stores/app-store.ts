@@ -10,6 +10,7 @@ import type {
   RequestQueueItem,
   SchedulerSettings,
 } from '@/types'
+import type { PersonalitySchedulerState, PersonalitySchedulerStateMap } from '@/types/scheduler'
 import { createId } from '@/utils/id'
 import { resolveStorage } from '@/utils/storage'
 
@@ -36,7 +37,7 @@ export const applySchedulerMessageUpdate = (
   const nextMessageIndex = state.scheduler.messageCounter + 1
 
   const updatedPersonalityStates = Object.values(state.personalities).reduce<
-    Record<string, PersonalitySchedulerState>
+    PersonalitySchedulerStateMap
   >((acc, personality) => {
     const existing =
       state.scheduler.personalityStates[personality.id] ??
@@ -106,18 +107,11 @@ export const applySchedulerMessageUpdate = (
   }
 }
 
-export interface PersonalitySchedulerState {
-  mentionScore: number
-  politenessScore: number
-  lastUpdatedMessageIndex: number
-  lastSpokeMessageIndex: number | null
-}
-
 interface SchedulerState {
   settings: SchedulerSettings
   queue: RequestQueueItem[]
   inFlightIds: string[]
-  personalityStates: Record<string, PersonalitySchedulerState>
+  personalityStates: PersonalitySchedulerStateMap
   messageCounter: number
 }
 
@@ -687,7 +681,7 @@ export const useAppStore = create<AppState>()(
           }
 
           const mergedPersonalityStates = Object.keys(mergedPersonalities).reduce<
-            Record<string, PersonalitySchedulerState>
+            PersonalitySchedulerStateMap
           >((acc, personalityId) => {
             const existing = currentState.scheduler.personalityStates[personalityId]
             acc[personalityId] =
@@ -739,7 +733,7 @@ export const useAppStore = create<AppState>()(
           }
 
           const mergedPersonalityStates = Object.keys(mergedPersonalities).reduce<
-            Record<string, PersonalitySchedulerState>
+            PersonalitySchedulerStateMap
           >((acc, personalityId) => {
             acc[personalityId] =
               base.scheduler.personalityStates[personalityId] ??

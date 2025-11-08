@@ -2,11 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
 import { executeChatCompletion } from '@/lib/openrouter/executor'
-import {
-  MIN_SELECTION_TEMPERATURE,
-  calculateRequestLogits,
-  sampleIndexFromLogits,
-} from '@/features/conversations/schedulerMath'
+import { deriveAvailableSlots, selectRequestsForSlots } from '@/lib/scheduler'
 import { useAppStore } from '@/stores/app-store'
 import type {
   Message,
@@ -32,28 +28,6 @@ const buildPromptMessages = (conversationId: string, messageId: string) => {
   }
 
   return messages.slice(0, insertionIndex + 1)
-}
-
-const shouldAutoRespond = (conversationId: string) => {
-  const state = useAppStore.getState()
-  const conversation = state.conversations[conversationId]
-  if (!conversation) {
-    return false
-  }
-
-  const settings = state.scheduler.settings
-  if (!settings.autoStart) {
-    return false
-  }
-
-  return true
-}
-
-const deriveAvailableSlots = () => {
-  const state = useAppStore.getState()
-  const activeCount = state.scheduler.inFlightIds.length
-  const { maxConcurrent } = state.scheduler.settings
-  return Math.max(0, maxConcurrent - activeCount)
 }
 
 const markMessageStreaming = (messageId: string) => {
@@ -96,6 +70,7 @@ const failRequest = (request: RequestQueueItem, error: string) => {
 
 export const ConversationScheduler = () => {
   const queue = useAppStore((state) => state.scheduler.queue)
+  const inFlightIds = useAppStore((state) => state.scheduler.inFlightIds)
   const settings = useAppStore((state) => state.scheduler.settings)
   const personalityStates = useAppStore((state) => state.scheduler.personalityStates)
   const personalities = useAppStore((state) => state.personalities)
@@ -189,46 +164,7 @@ export const ConversationScheduler = () => {
     [queue],
   )
 
-  const selectRequestsForSlots = useCallback(
-    (slots: number) => {
-      if (slots <= 0) {
-        return []
-      }
-
-      const candidates = queuedItems.filter((item) => {
-        if (activeRequests.current.has(item.id)) {
-          return false
-        }
-
-        return Boolean(personalities[item.authorId])
-      })
-
-      const selections: RequestQueueItem[] = []
-      const workingList = [...candidates]
-      const selectionTemperature = Math.max(
-        MIN_SELECTION_TEMPERATURE,
-        settings.selectionTemperature,
-      )
-
-      while (selections.length < slots && workingList.length > 0) {
-        const logits = calculateRequestLogits(
-          workingList,
-          personalities,
-          personalityStates,
-        )
-        const selectedIndex = sampleIndexFromLogits(logits, selectionTemperature)
-        if (selectedIndex < 0) {
-          break
-        }
-
-        selections.push(workingList[selectedIndex])
-        workingList.splice(selectedIndex, 1)
-      }
-
-      return selections
-    },
-    [personalityStates, personalities, queuedItems, settings.selectionTemperature],
-  )
+  const inFlightCount = inFlightIds.length
 
   useEffect(() => {
     if (!settings.autoStart) {
@@ -239,16 +175,30 @@ export const ConversationScheduler = () => {
       return
     }
 
-    if (!shouldAutoRespond(queuedItems[0].conversationId)) {
+    const conversationId = queuedItems[0]?.conversationId
+    if (!conversationId) {
       return
     }
 
-    const slots = deriveAvailableSlots()
+    const conversationExists = Boolean(useAppStore.getState().conversations[conversationId])
+    if (!conversationExists) {
+      return
+    }
+
+    const slots = deriveAvailableSlots(settings.maxConcurrent, inFlightCount)
     if (slots <= 0) {
       return
     }
 
-    const nextBatch = selectRequestsForSlots(slots)
+    const nextBatch = selectRequestsForSlots({
+      queue: queuedItems,
+      personalities,
+      personalityStates,
+      selectionTemperature: settings.selectionTemperature,
+      slots,
+      activeRequestIds: activeRequests.current,
+    })
+
     nextBatch.forEach((request) => {
       if (activeRequests.current.has(request.id)) {
         return
@@ -256,7 +206,16 @@ export const ConversationScheduler = () => {
 
       startRequest(request)
     })
-  }, [queuedItems, selectRequestsForSlots, settings.autoStart, startRequest])
+  }, [
+    inFlightCount,
+    personalityStates,
+    personalities,
+    queuedItems,
+    settings.autoStart,
+    settings.maxConcurrent,
+    settings.selectionTemperature,
+    startRequest,
+  ])
 
   return null
 }
