@@ -83,6 +83,7 @@ export const ArcScheduler = () => {
   const startRequest = useCallback(
     async (request: RequestQueueItem) => {
       try {
+        console.log("processing request", request)
         activeRequests.current.add(request.id)
         markInFlight(request.id)
         updateQueueItem(request.id, { status: 'in-flight' })

@@ -4,11 +4,16 @@ import { createJSONStorage, devtools, persist } from 'zustand/middleware'
 import type {
   AppView,
   Arc,
+  CreateArcInput,
+  CreateMsgInput,
+  CreateNymInput,
   Msg,
   MsgStatus,
   Nym,
+  QueueRequestInput,
   RequestQueueItem,
   SchedulerSettings,
+  UpdateMsgInput,
 } from '@/types'
 import type { NymSchedulerState, NymSchedulerStateMap } from '@/types/scheduler'
 import { createId } from '@/utils/id'
@@ -129,53 +134,16 @@ interface BaseState {
   ui: UIState
 }
 
-type CreateArcInput = {
-  id?: string
-  title?: string
-  participantIds?: string[]
-  activeNymIds?: string[]
-}
-
-type AppendMsgInput = {
-  id?: string
-  authorId: string
-  authorRole: Msg['authorRole']
-  content: string
-  nymId?: string
-  status?: MsgStatus
-  createdAt?: string
-}
-
-type CreateNymInput = {
-  id?: string
-  name?: string
-  model?: string
-  description?: string
-  prompt?: string
-  temperature?: number
-  eagerness?: number
-  politenessPenalty?: number
-  politenessHalfLife?: number
-  mentionBoost?: number
-  autoRespond?: boolean
-  color?: string
-}
-
-type QueueRequestInput = Omit<RequestQueueItem, 'id' | 'enqueuedAt' | 'status'> & {
-  id?: string
-  status?: RequestQueueItem['status']
-  error?: string
-}
 
 type AppActions = {
   setActiveView: (view: AppView) => void
   openSettings: () => void
   closeSettings: () => void
   setActiveArc: (arcId: string) => void
-  createArc: (input?: CreateArcInput) => string
+  createArc: (input: CreateArcInput) => string
   removeArc: (arcId: string) => void
-  appendMsg: (arcId: string, input: AppendMsgInput) => string | undefined
-  updateMsg: (msgId: string, updates: Partial<Msg>) => void
+  createMsg: (arcId: string, input: CreateMsgInput) => string | undefined
+  updateMsg: (msgId: string, input: UpdateMsgInput) => void
   createNym: (input?: CreateNymInput) => string
   updateNym: (nymId: string, updates: Partial<Nym>) => void
   deleteNym: (nymId: string) => void
@@ -188,85 +156,14 @@ type AppActions = {
 
 export type AppState = BaseState & { actions: AppActions }
 
-type LegacyArc = Omit<Arc, 'msgIds' | 'activeNymIds'> & {
-  messageIds?: string[]
-  activePersonalityIds?: string[]
-}
-
-type LegacyMsg = Omit<Msg, 'arcId' | 'nymId'> & {
-  conversationId?: string
-  personalityId?: string
-}
-
 type PersistedState = Partial<
   Pick<BaseState, 'nyms' | 'arcs' | 'msgs' | 'activeArcId'>
 > & {
-  personalities?: Record<string, Nym>
-  conversations?: Record<string, LegacyArc>
-  messages?: Record<string, LegacyMsg>
-  activeConversationId?: string | null
   scheduler?: {
     settings?: SchedulerSettings
   }
   ui?: {
     activeView?: AppView
-  }
-}
-
-type NormalisedDomainState = {
-  nyms: Record<string, Nym>
-  arcs: Record<string, Arc>
-  msgs: Record<string, Msg>
-  activeArcId: string | null
-}
-
-const convertLegacyMsgs = (legacy?: Record<string, LegacyMsg>): Record<string, Msg> => {
-  if (!legacy) {
-    return {}
-  }
-
-  return Object.entries(legacy).reduce<Record<string, Msg>>((acc, [id, legacyMsg]) => {
-    const { conversationId, personalityId, ...rest } = legacyMsg
-    if (!conversationId) {
-      return acc
-    }
-
-    acc[id] = {
-      ...rest,
-      arcId: conversationId,
-      nymId: personalityId,
-    }
-    return acc
-  }, {})
-}
-
-const convertLegacyArcs = (legacy?: Record<string, LegacyArc>): Record<string, Arc> => {
-  if (!legacy) {
-    return {}
-  }
-
-  return Object.entries(legacy).reduce<Record<string, Arc>>((acc, [id, legacyArc]) => {
-    const { messageIds, activePersonalityIds, ...rest } = legacyArc
-    acc[id] = {
-      ...rest,
-      msgIds: messageIds ?? [],
-      activeNymIds: activePersonalityIds ?? [],
-    }
-    return acc
-  }, {})
-}
-
-const normalisePersistedState = (state: PersistedState): NormalisedDomainState => {
-  const nyms = state.nyms ?? state.personalities ?? {}
-  const arcs = state.arcs ?? convertLegacyArcs(state.conversations)
-  const msgs = state.msgs ?? convertLegacyMsgs(state.messages)
-  const activeArcId = state.activeArcId ?? state.activeConversationId ?? null
-
-  return {
-    nyms: nyms as Record<string, Nym>,
-    arcs,
-    msgs,
-    activeArcId,
   }
 }
 
@@ -407,7 +304,7 @@ export const useAppStore = create<AppState>()(
               false,
               'arcs/setActive',
             ),
-          createArc: (input) => {
+        createArc: (input) => {
             const id = input?.id ?? createId()
             const title = input?.title?.trim() || 'New Arc'
             const now = new Date().toISOString()
@@ -417,7 +314,6 @@ export const useAppStore = create<AppState>()(
               title,
               participantIds: input?.participantIds ?? [],
               msgIds: [],
-              activeNymIds: input?.activeNymIds ?? [],
               createdAt: now,
               updatedAt: now,
             }
@@ -744,21 +640,20 @@ export const useAppStore = create<AppState>()(
             return currentState
           }
 
-          const typed = persistedState as PersistedState
-          const { scheduler, ui } = typed
-          const domainState = normalisePersistedState(typed)
+          const typed = persist, ...rests PersistedState
+          const { scheduler, ui, ...rest } = typed
 
           const mergedNyms = {
-            ...currentState.nyms,
-            ...domainState.nyms,
+            ...(restntSta ?? {}),
+            ...(rest.nyms ?? {}),
           }
           const mergedArcs = {
-            ...currentState.arcs,
-            ...domainState.arcs,
+            ...(restntSta ?? {}),
+            ...(rest.arcs ?? {}),
           }
           const mergedMsgs = {
-            ...currentState.msgs,
-            ...domainState.msgs,
+            ...(restntSta ?? {}),
+            ...(rest.msgs ?? {}),
           }
 
           const mergedNymStates = Object.keys(mergedNyms).reduce<NymSchedulerStateMap>((acc, nymId) => {
@@ -772,8 +667,8 @@ export const useAppStore = create<AppState>()(
             ...currentState,
             nyms: mergedNyms,
             arcs: mergedArcs,
-            msgs: mergedMsgs,
-            activeArcId: domainState.activeArcId ?? currentState.activeArcId,
+            msgs: mergedMrest
+            activeArcId: rest.activeArcId ?? currentState.activeArcId,
             scheduler: {
               ...currentState.scheduler,
               settings: {
@@ -807,19 +702,18 @@ export const useAppStore = create<AppState>()(
           }
 
           const typed = persistedState as PersistedState
-          const domainState = normalisePersistedState(typed)
 
           const mergedNyms = {
-            ...base.nyms,
-            ...domainState.nyms,
+            ...(typedyms, ?? {})
+            ...(typed.nyms ?? {}),
           }
           const mergedArcs = {
-            ...base.arcs,
-            ...domainState.arcs,
+            ...(typedrcs, ?? {})
+            ...(typed.arcs ?? {}),
           }
           const mergedMsgs = {
-            ...base.msgs,
-            ...domainState.msgs,
+            ...(typedsgs, ?? {})
+            ...(typed.msgs ?? {}),
           }
 
           const mergedNymStates = Object.keys(mergedNyms).reduce<NymSchedulerStateMap>((acc, nymId) => {
@@ -832,8 +726,8 @@ export const useAppStore = create<AppState>()(
           return {
             nyms: mergedNyms,
             arcs: mergedArcs,
-            msgs: mergedMsgs,
-            activeArcId: domainState.activeArcId ?? base.activeArcId,
+            msgs: mergedMsyp,d
+            activeArcId: typed.activeArcId ?? base.activeArcId,
             scheduler: {
               ...base.scheduler,
               settings: {

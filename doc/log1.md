@@ -1,3 +1,257 @@
+## 2025-11-12
+### Understanding the app-store code model
+▌ right now there's a general pattern where "Input" objects are missing a bunch of fields for the corresponding "actual"
+▌ objects (Arc, Nym, Msg, etc) which then get instantiated in app-store.ts. This pushes a lot of logic into app-store.ts that
+▌ we might want to be in a single place in the app (where the Arcs, Nyms, etc get created). what are the benefits and costs of
+▌ doing this / what are the trade offs here?
+
+> Right now the store acts as the factory: CreateArcInput, CreateNymInput, AppendMsgInput, etc. are lightweight “option bags”
+  with just the caller-provided fields, and app-store.ts fills in the rest (IDs, timestamps, defaults). The trade-offs:
+
+  Benefits of store-owned constructors
+
+  - Single source of truth for invariants. Arc/Nym/Msg objects are created in one place, so defaults (timestamps, IDs,
+  scheduler bookkeeping) stay consistent. If you need to tweak how a Msg is initialized, you do it once inside the store.
+  - Lean call sites. Components send only the data the user actually entered; they don’t worry about IDs or derived fields.
+  - Easier persistence/migration. Because the store controls object shape, it can manage migrations/versioning when loading
+  from storage.
+
+  Costs
+
+  - Store bloat. app-store.ts accumulates a lot of domain logic (e.g., timestamp generation, scheduler updates). That file
+  becomes a dumping ground and harder to maintain or test.
+  - Limited reuse. If you want to create an Arc outside the store (say, seeding, importing, tests), you either call into the
+  store actions or duplicate the defaulting logic elsewhere.
+  - Opaque types. If input/output types aren’t exported (as you noticed earlier), it’s easy for callers to construct mismatched
+  objects.
+
+  Alternative: shared factories/domain layer
+
+  - Move Arc/Nym/Msg factory functions (and their types) into a dedicated module (src/domain/arc.ts, etc.). Both the store and
+  other code call these helpers to build canonical objects.
+  - The store actions then become thin: createArc(input) { const arc = makeArc(input); set(...) }.
+  - Trade-off: you add indirection, but you centralize creation logic outside the store, which can improve testability and
+  reduce app-store.ts size.
+
+  If you foresee creating these entities in multiple contexts (imports, tests, server sync), refactoring to shared factories/
+  types is worth it. If the store truly is the only place they’re born, keeping the logic there is fine—just be sure to export
+  the input/output types so other modules know the shapes, and consider extracting helper functions inside app-store.ts to keep
+  it readable.
+
+▌ I guess what I'm saying is each of these is usually only called in one place so I could move all the logic into the single
+▌ caller of the app-store so the app store is simpler. is that a good or bad idea? why?
+
+> If each action has only one caller today, you could move the object‑construction logic into that caller and pass fully formed
+  Arc, Msg, etc. into the store. But there are trade‑offs.
+
+  Pros of moving logic out of the store
+
+  - app-store.ts gets slimmer: actions become “assign this object” without worrying about IDs/timestamps/defaults.
+  - The creation code lives next to the UI/context that knows why the object exists, which can make that caller easier to
+  reason about.
+  - You avoid duplicating small “Input” types if the caller already knows the full domain type.
+
+  Cons
+
+  - You lose a single source of truth. If later you need to create the same entity from another place (imports, tests, CLI
+  tooling), you’ll end up duplicating that logic or reintroducing helper functions.
+  - Invariants now depend on every caller remembering to set IDs, timestamps, scheduler bookkeeping, etc. Bugs creep in when
+  one path forgets a field the store used to guarantee.
+  - The store becomes less future-proof: if you need to change the schema or add derived fields (e.g., new scheduler counters),
+  you must update every caller to the action instead of tweaking one factory.
+  - Zustand actions are effectively your “public API” for state changes. Letting callers mutate raw structures blurs the
+  separation of concerns.
+
+  Guideline: if an action truly has one caller and will never be reused (e.g., a hyper-specific helper), inlining the logic
+  is harmless. But for foundational domain entities (arcs, nyms, messages) that you’ll likely create from multiple places over
+  time, keeping the construction in one shared spot (the store or a dedicated factory module) is safer. You can still extract
+  helper functions to reduce clutter while preserving centralized invariants.
+
+▌ it feels like having all these defaults encourages sloppy data modeling by the caller
+
+> Centralizing defaults doesn’t encourage sloppy modeling—it protects you from it. The risk actually comes from the opposite
+  direction: if every caller is responsible for populating every field, you get inconsistent records (missing timestamps,
+  mismatched IDs, scheduler state drifting). By pushing the defaults/invariants into one place (the store or a domain factory),
+  the caller supplies only the business-specific bits (e.g., message text, selected nyms) and the shared layer guarantees the
+  rest.
+
+  Think of CreateNymInput vs. Nym:
+
+  - Callers shouldn’t decide how IDs are generated, when createdAt/updatedAt get stamped, or how scheduler counter fields
+  initialize. That’s the domain layer’s job.
+  - The input type forces the caller to provide the essential parameters (name, model, prompt) while the store ensures every
+  Nym object is complete.
+
+  If you’re worried about callers being too lax with required fields, you can:
+
+  1. Tighten the input type (make name, model, etc. required).
+  2. Validate in the action and throw/log when required fields are missing.
+  3. Extract shared factory functions (e.g., makeMsg(input: AppendMsgInput): Msg) so the “defaults” live in one module rather
+  than spread around.
+
+  That way data modeling stays strict, but responsibility stays localized. Removing defaults from the store only shifts the
+  burden—and potential mistakes—onto each caller.
+
+
+### Understanding implicit types and type exports
+how does automatic type inference for structured types work in typescript? right now I have a type error because I'm passing
+▌ a string to a type that's been declared with a few string literals. how do I fix this? the error is:
+▌ src/components/MsgComposer.tsx:36:36 - error TS2345: Argument of type '{ authorId: string; authorRole: string; content:
+▌ string; status: string; }' is not assignable to parameter of type 'AppendMsgInput'.
+▌   Types of property 'authorRole' are incompatible.
+▌     Type 'string' is not assignable to type 'Role'.
+▌
+▌ 36     const msgId = appendMsg(arcId, msg)
+▌                                       ~~~
+
+> TypeScript is telling you that appendMsg expects an AppendMsgInput, where authorRole is the literal union type Role = 'user'
+  | 'assistant' | 'system' (or similar). When you build msg inline like { authorRole: someString }, TS infers authorRole as
+  plain string, which is broader than the allowed literals, so assignment fails.
+
+  You can fix it a few ways:
+
+  1. Annotate the object with the specific type (or satisfies).
+
+  const msg: AppendMsgInput = {
+    authorId,
+    authorRole: 'user',      // or whichever literal applies
+    content,
+    status: 'complete',
+  }
+
+  const msgId = appendMsg(arcId, msg)
+
+  Using satisfies keeps literal narrowing while validating the shape:
+
+  const msg = {
+    authorId,
+    authorRole: 'user',
+    content,
+    status: 'complete',
+  } satisfies AppendMsgInput
+
+  2. Give authorRole a literal type upstream. For example, if authorRole comes from state, declare it as const authorRole: Role
+  = 'user' so TS knows it’s one of the allowed literals.
+
+  Avoid casting (as Role) unless necessary—better to let TypeScript infer the precise literal type by assigning the right
+  annotation. Once authorRole is typed as 'user' | 'assistant' | 'system', the appendMsg call type-checks without errors.
+
+▌ hmm but the type AppendMsgInput is not exported from app-store.ts where it's declared. is this bad practice? something feels
+▌ weird here
+
+> If other modules are supposed to construct that payload, the type should be exported (or moved to a shared types file).
+  Keeping AppendMsgInput private inside app-store.ts forces downstream code either to re-declare the shape (risking drift) or
+  to rely on any/casts, both of which defeat TypeScript’s safety.
+
+  Two better patterns:
+
+  1. Export the type from the store file.
+
+  // app-store.ts
+  export type AppendMsgInput = { ... }
+
+  Then import it where needed (import type { AppendMsgInput } from '@/stores/app-store').
+
+  2. Lift domain types into src/types so store, components, and other modules all share the same definition (avoids circular
+  dependencies if your store also imports the component).
+
+  As a rule, any “public” API (functions, actions) should expose the types of their parameters/returns. Otherwise you end up
+  duplicating object literals and getting errors like the one you saw. So yes, it’s a smell—export the type or move it into
+  types/ so the composer and the store agree on the exact shape.
+
+▌ can you look in app-store.ts and tell me whether these "input" types make sense at all? I'm not sure whether or not these
+▌ should just be lists of (keyword?) arguments instead of "...Input" types
+
+• Explored
+  └ Read app-store.ts
+
+> Those ...Input types are just plain object shapes that describe the payload each action consumes:
+
+  - CreateArcInput (web/src/stores/app-store.ts:66) lets callers provide optional properties (id, title, participant IDs). The
+  action can give defaults for anything omitted.
+  - AppendMsgInput (web/src/stores/app-store.ts:72) ensures authorRole is one of the allowed literals, status matches
+  MsgStatus, etc. This is safer than passing a grab bag of positional arguments—the compiler enforces the structure, and we can
+  add optional fields later without touching every call site.
+  - CreateNymInput (web/src/stores/app-store.ts:83) captures all the optional config knobs for a personality, again letting the
+  action merge defaults.
+  - QueueRequestInput (web/src/stores/app-store.ts:95) wraps a request object minus the internal bookkeeping fields the store
+  adds (id, enqueuedAt, status).
+
+  So conceptually they’re more like “typed dictionaries” than dataclasses. They’re flexible (optional properties, future
+  extensibility) while giving TypeScript something concrete to check.
+
+  What is awkward right now is that these types aren’t exported. That forces callers (e.g. MsgComposer) to build compatible
+  objects without having the type in scope, which leads to “string is not assignable to literal” errors. Two clean fixes:
+
+  1. Export the input types from app-store.ts so other modules can import them (export type AppendMsgInput = …), or
+  2. Move domain types (arc/nym/message payloads) into src/types/ and have both the store and UI share the same definitions—
+  keeps the store from becoming a choke point.
+
+  Switching to positional arguments would make things worse: appendMsg(arcId, authorId, role, content, status, createdAt) is
+  harder to read, brittle when you add fields, and doesn’t help TypeScript narrow literals. Keeping these “input” objects is
+  good practice; just make the types available where they’re needed so you benefit from the compiler checks.
+
+
+### Structured types in JS
+
+In JavaScript you basically have three “structured” options:
+
+  1. Plain objects ({} / interface / type Foo = {…} / Record<K,V>):
+      - Stored as ordinary JS objects keyed by strings or symbols (number keys are coerced to strings).
+      - Fast property access, JSON-serializable, works great with the spread operator and destructuring.
+      - TypeScript’s Record<K,V> is just a shorthand for “object whose keys K map to values V” (e.g. Record<string, User>).
+  It’s conceptually like a Python dict constrained to a particular value type.
+      - Best for data that naturally serializes or when you need ergonomic access (obj[key]).
+  2. Map (ES6):
+      - True hash map that supports keys of any type (objects, functions, etc.) without string coercion.
+      - Maintains insertion order, has helpers like .set, .get, .has, direct .size.
+      - Not JSON-serializable by default, spreads awkwardly ({...map} doesn’t work), and equality comparisons need manual
+  handling.
+      - Great when you need non-string keys or frequent dynamic adds/removes where you want iteration order preserved.
+  3. Class/“dataclass” style objects:
+      - You can define classes or factory functions for structured records (class User { constructor(public name…) {} }).
+      - Gives methods and encapsulation but you lose the lightweight feel of plain objects, and serialization requires custom
+  code.
+
+  Practical trade-offs:
+
+  - If you’re modeling server data, component state, or anything you intend to store in Zustand/Redux/localStorage, stick with
+  plain objects / Records—they serialize, clone, and diff cleanly.
+  - Use Map only when you need features plain objects don’t offer (non-string keys, frequent resizing without prototype
+  pollution, or the ability to iterate entries in insertion order without converting them).
+  - TypeScript’s Record<K,V> doesn’t create anything special at runtime; it just enforces the shape. So when you see
+  Record<string, Personality> it’s literally { [key: string]: Personality }.
+
+  In our scheduler/store code, we prefer Record/plain objects for two reasons: they serialize easily (helpful for persistence)
+  and Zustand’s shallow comparison detects changes efficiently. Map would require custom comparison logic and serialization
+  hooks. So think of Record as “typed dict”, and use a real Map only when the key requirements or performance characteristics
+  truly demand it.
+
+▌ in types.ts, some things are types and others are interfaces. what's the difference? when should I use which one?
+
+• Explored
+  └ Read index.ts, app.ts
+
+> In TypeScript, interface and type can both describe object shapes, but they have slightly different capabilities:
+
+  - Interfaces can be extended/merged. If you declare the same interface name twice, TypeScript merges the members (handy for
+  augmenting declarations). Interfaces can only describe object/structural types.
+  - Type aliases are more general: they can represent unions, intersections, primitive aliases, tuples, etc. They can’t be
+  redeclared/merged.
+
+  For plain data models (Msg, Nym, Arc), using interface is idiomatic because it’s extendable and communicates “this is an
+  object shape”. For unions like Role = 'user' | 'assistant' or derived utility types (QueueRequestInput = Omit<…>), only type
+  works.
+
+  In app.ts, you’re using interfaces for structured entities and type aliases for literal unions or composed types—that’s
+  perfectly fine. If you prefer consistency, you could switch everything to type (many projects do), but there’s no functional
+  difference here. Pick whichever reads better: interface when you expect to extend/implement it, type when you need unions/
+  intersections or don’t plan on declaration merging.
+
+## 2025-11-09
+### React Q&A
+I put the answers in react.md. I think this will be useful in the future too.
+
 ## 2025-11-08
 ### Big refactor
 #### Codebase Simplification

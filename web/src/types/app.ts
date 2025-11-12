@@ -1,14 +1,14 @@
 export type AppView = 'arcs' | 'nyms'
 
 /*
-  The role of a msg author, in llm terminology.
+  The role of a message author, in llm terminology.
   All nyms use the 'assistant' role.
   Tool calls aren't supported yet.
 */
 export type Role = 'user' | 'assistant' | 'system'
 
 /*
-  The status of a msg. The ArcScheduler keeps this up to date
+  The status of a message. The ArcScheduler keeps this up to date
   based on the raw completion responses from the model provider.
 */
 export type MsgStatus = 'complete' | 'streaming' | 'error' | 'cancelled'
@@ -55,7 +55,7 @@ export interface Msg {
 }
 
 /*
-  Info about an LLM that we can talk to.
+  A "nym" (pseudonym, I guess) is basically an LLM that we can talk to.
 
   Stores all the information we need to make an LLM call.
 
@@ -103,6 +103,8 @@ export interface Nym {
 /*
   A chat arc.
 
+  For now this is basically a conversation, but eventually we'll add more structure.
+
   We track all participants who have ever been in the arc, as well as
   the active nyms (for rendering in the UI).
   */
@@ -140,4 +142,43 @@ export interface RequestQueueItem {
   status: RequestStatus
   error?: string
   debug?: string
+}
+
+export type CreateArcInput = {
+  title: string
+  participantIds: string[]
+  activeNymIds: string[]
+}
+
+export type CreateMsgInput = {
+  authorId: string
+  authorRole: Role
+  content: string
+  status: MsgStatus
+}
+
+export type UpdateMsgInput = {
+  content: string
+  status: MsgStatus
+}
+
+export type CreateNymInput = {
+  id?: string
+  name?: string
+  model?: string
+  description?: string
+  prompt?: string
+  temperature?: number
+  eagerness?: number
+  politenessPenalty?: number
+  politenessHalfLife?: number
+  mentionBoost?: number
+  autoRespond?: boolean
+  color?: string
+}
+
+export type QueueRequestInput = Omit<RequestQueueItem, 'id' | 'enqueuedAt' | 'status'> & {
+  id?: string
+  status?: RequestQueueItem['status']
+  error?: string
 }

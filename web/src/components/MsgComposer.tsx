@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { FormEventHandler, KeyboardEventHandler } from 'react'
 
 import { useAppStore } from '@/stores/app-store'
+import { type AppendMsgInput } from '@/types/app'
 
 import styles from './MsgComposer.module.css'
 
@@ -25,12 +26,16 @@ export const MsgComposer = ({ arcId }: MsgComposerProps) => {
 
     const authorId = 'user'
 
-    const msgId = appendMsg(arcId, {
+    const msg: AppendMsgInput = {
       authorId,
       authorRole: 'user',
       content: trimmedContent,
       status: 'complete',
-    })
+    }
+
+    const msgId = appendMsg(arcId, msg)
+
+    console.log('new msg', msg)
 
     if (msgId && arc) {
       queueRequest({
