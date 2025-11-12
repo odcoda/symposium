@@ -47,7 +47,6 @@ export interface Msg {
   createdAt: string
   updatedAt: string
   status: MsgStatus
-  nymId?: string
   statusDetails?: string
   chunks?: Record<string, unknown>[]
   generation?: Record<string, unknown>
@@ -151,6 +150,7 @@ export type CreateArcInput = {
 }
 
 export type CreateMsgInput = {
+  arcId: string
   authorId: string
   authorRole: Role
   content: string
@@ -163,18 +163,17 @@ export type UpdateMsgInput = {
 }
 
 export type CreateNymInput = {
-  id?: string
-  name?: string
-  model?: string
-  description?: string
-  prompt?: string
-  temperature?: number
-  eagerness?: number
-  politenessPenalty?: number
-  politenessHalfLife?: number
-  mentionBoost?: number
-  autoRespond?: boolean
-  color?: string
+  name: string
+  model: string
+  description: string
+  prompt: string
+  temperature: number
+  eagerness: number
+  politenessPenalty: number
+  politenessHalfLife: number
+  mentionBoost: number
+  autoRespond: boolean
+  color: string
 }
 
 export type QueueRequestInput = Omit<RequestQueueItem, 'id' | 'enqueuedAt' | 'status'> & {

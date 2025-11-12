@@ -1,4 +1,10 @@
 ## 2025-11-12
+### Data model cleanup
+- moved the creation input types into app.ts
+- simplified the input types so more things are required and optional things are removed
+- clean up / simplify app-store.ts accordingly (in progress)
+- clean up call sites to specify necessary fields (in progress)
+
 ### Understanding the app-store code model
 ▌ right now there's a general pattern where "Input" objects are missing a bunch of fields for the corresponding "actual"
 ▌ objects (Arc, Nym, Msg, etc) which then get instantiated in app-store.ts. This pushes a lot of logic into app-store.ts that

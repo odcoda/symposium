@@ -142,9 +142,9 @@ type AppActions = {
   setActiveArc: (arcId: string) => void
   createArc: (input: CreateArcInput) => string
   removeArc: (arcId: string) => void
-  createMsg: (arcId: string, input: CreateMsgInput) => string | undefined
-  updateMsg: (msgId: string, input: UpdateMsgInput) => void
-  createNym: (input?: CreateNymInput) => string
+  createMsg: (input: CreateMsgInput) => string | undefined
+  updateMsg: (msgId: string, updates: Partial<Msg>) => void
+  createNym: (input: CreateNymInput) => string
   updateNym: (nymId: string, updates: Partial<Nym>) => void
   deleteNym: (nymId: string) => void
   updateSchedulerSettings: (settings: Partial<SchedulerSettings>) => void
@@ -305,14 +305,12 @@ export const useAppStore = create<AppState>()(
               'arcs/setActive',
             ),
         createArc: (input) => {
-            const id = input?.id ?? createId()
-            const title = input?.title?.trim() || 'New Arc'
+            const id = createId()
             const now = new Date().toISOString()
 
             const arc: Arc = {
+              ...input,
               id,
-              title,
-              participantIds: input?.participantIds ?? [],
               msgIds: [],
               createdAt: now,
               updatedAt: now,
@@ -367,26 +365,22 @@ export const useAppStore = create<AppState>()(
               false,
               'arcs/remove',
             ),
-          appendMsg: (arcId, input) => {
+          createMsg: (input) => {
+            const arcId = input.arcId
             const arc = get().arcs[arcId]
             if (!arc) {
+              console.log("attempted to create msg on nonexistent arc ", arcId)
               return undefined
             }
 
-            const id = input.id ?? createId()
-            const createdAt = input.createdAt ?? new Date().toISOString()
-            const status: MsgStatus = input.status ?? 'complete'
+            const id = createId()
+            const now = new Date().toISOString()
 
             const msg: Msg = {
+              ...input,
               id,
-              arcId,
-              authorId: input.authorId,
-              authorRole: input.authorRole,
-              content: input.content,
-              createdAt,
-              updatedAt: createdAt,
-              status,
-              nymId: input.nymId,
+              createdAt: now,
+              updatedAt: now,
             }
 
             set(
@@ -400,7 +394,7 @@ export const useAppStore = create<AppState>()(
                   [arcId]: {
                     ...state.arcs[arcId],
                     msgIds: [...state.arcs[arcId].msgIds, id],
-                    updatedAt: createdAt,
+                    updatedAt: now,
                   },
                 },
                 scheduler: applySchedulerMsgUpdate(state, msg),
@@ -434,22 +428,12 @@ export const useAppStore = create<AppState>()(
               'msgs/update',
             ),
           createNym: (input) => {
-            const id = input?.id ?? createId()
+            const id = createId()
             const now = new Date().toISOString()
 
             const nym: Nym = {
+              ...input,
               id,
-              name: input?.name?.trim() || 'New Nym',
-              model: input?.model ?? 'openrouter/auto',
-              description: input?.description ?? '',
-              prompt:
-                input?.prompt ?? 'You are a helpful collaborator who reasons carefully and communicates succinctly.',
-              temperature: input?.temperature ?? 0.7,
-              eagerness: input?.eagerness ?? 0.5,
-              politenessPenalty: input?.politenessPenalty ?? 0.2,
-              politenessHalfLife: input?.politenessHalfLife ?? 4,
-              mentionBoost: input?.mentionBoost ?? 1,
-              color: input?.color ?? '#14b8a6',
               createdAt: now,
               updatedAt: now,
             }
@@ -640,19 +624,19 @@ export const useAppStore = create<AppState>()(
             return currentState
           }
 
-          const typed = persist, ...rests PersistedState
+          const typed = persistedState as PersistedState
           const { scheduler, ui, ...rest } = typed
 
           const mergedNyms = {
-            ...(restntSta ?? {}),
+            ...currentState.nyms,
             ...(rest.nyms ?? {}),
           }
           const mergedArcs = {
-            ...(restntSta ?? {}),
+            ...currentState.arcs,
             ...(rest.arcs ?? {}),
           }
           const mergedMsgs = {
-            ...(restntSta ?? {}),
+            ...currentState.msgs,
             ...(rest.msgs ?? {}),
           }
 
@@ -667,7 +651,7 @@ export const useAppStore = create<AppState>()(
             ...currentState,
             nyms: mergedNyms,
             arcs: mergedArcs,
-            msgs: mergedMrest
+            msgs: mergedMsgs,
             activeArcId: rest.activeArcId ?? currentState.activeArcId,
             scheduler: {
               ...currentState.scheduler,
@@ -704,15 +688,15 @@ export const useAppStore = create<AppState>()(
           const typed = persistedState as PersistedState
 
           const mergedNyms = {
-            ...(typedyms, ?? {})
+            ...base.nyms,
             ...(typed.nyms ?? {}),
           }
           const mergedArcs = {
-            ...(typedrcs, ?? {})
+            ...base.arcs,
             ...(typed.arcs ?? {}),
           }
           const mergedMsgs = {
-            ...(typedsgs, ?? {})
+            ...base.msgs,
             ...(typed.msgs ?? {}),
           }
 
@@ -726,7 +710,7 @@ export const useAppStore = create<AppState>()(
           return {
             nyms: mergedNyms,
             arcs: mergedArcs,
-            msgs: mergedMsyp,d
+            msgs: mergedMsgs,
             activeArcId: typed.activeArcId ?? base.activeArcId,
             scheduler: {
               ...base.scheduler,
