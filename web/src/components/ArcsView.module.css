@@ -193,9 +193,15 @@
 
 .msgHeader {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.msgHeaderMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
 .msgAuthor {
@@ -215,6 +221,27 @@
   border: 1px solid var(--border-subtle);
   background: var(--surface-highlight);
   align-self: flex-start;
+}
+
+.msgStatusError {
+  font-size: 0.8rem;
+  color: #f87171;
+  margin-top: -0.3rem;
+}
+
+.msgDeleteButton {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.5rem;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.msgDeleteButton:hover {
+  color: var(--accent-strong);
+  background: var(--surface-highlight);
 }
 
 .emptyState {

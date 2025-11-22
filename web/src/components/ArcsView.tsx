@@ -60,7 +60,7 @@ export const ArcsView = () => {
   const msgs = useAppStore((state) => state.msgs)
   const nyms = useAppStore((state) => state.nyms)
   const activeArcId = useAppStore((state) => state.activeArcId)
-  const { setActiveArc, createArc, createMsg, updateMsg } = useAppStore(
+  const { setActiveArc, createArc, createMsg, updateMsg, deleteMsg } = useAppStore(
     (state) => state.actions,
   )
   const msgsEndRef = useRef<HTMLDivElement | null>(null)
@@ -184,6 +184,7 @@ export const ArcsView = () => {
           updateMsg(placeholderMsgId, {
             content: assembledContent,
             updatedAt: new Date().toISOString(),
+            statusDetails: undefined,
           })
         },
       })
@@ -193,6 +194,7 @@ export const ArcsView = () => {
         content: finalContent.length ? finalContent : '(No response)',
         status: 'complete',
         updatedAt: new Date().toISOString(),
+        statusDetails: undefined,
       })
     } catch (error) {
       const message =
@@ -200,7 +202,7 @@ export const ArcsView = () => {
       setRequestError(message)
       updateMsg(placeholderMsgId, {
         status: 'error',
-        content: message,
+        statusDetails: message,
         updatedAt: new Date().toISOString(),
       })
     } finally {
@@ -260,12 +262,25 @@ export const ArcsView = () => {
                 {activeMsgs.map((msg) => (
                   <article key={msg.id} className={styles.msgCard}>
                     <header className={styles.msgHeader}>
-                      <span className={styles.msgAuthor}>
-                        {getAuthorName(msg, nyms)}
-                      </span>
-                      <span className={styles.msgTimestamp}>{formatTimestamp(msg.createdAt)}</span>
+                      <div className={styles.msgHeaderMeta}>
+                        <span className={styles.msgAuthor}>
+                          {getAuthorName(msg, nyms)}
+                        </span>
+                        <span className={styles.msgTimestamp}>{formatTimestamp(msg.createdAt)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.msgDeleteButton}
+                        onClick={() => deleteMsg(msg.id)}
+                        aria-label="Delete message"
+                      >
+                        Delete
+                      </button>
                     </header>
                     <p>{msg.content}</p>
+                    {msg.status === 'error' && msg.statusDetails ? (
+                      <div className={styles.msgStatusError}>{msg.statusDetails}</div>
+                    ) : null}
                     <span className={styles.msgStatus}>{msg.status}</span>
                   </article>
                 ))}

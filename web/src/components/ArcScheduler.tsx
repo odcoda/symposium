@@ -32,7 +32,7 @@ const buildPromptMsgs = (arcId: string, msgId: string) => {
 
 const markMsgStreaming = (msgId: string) => {
   const { updateMsg } = useAppStore.getState().actions
-  updateMsg(msgId, { status: 'streaming' })
+  updateMsg(msgId, { status: 'streaming', statusDetails: undefined })
 }
 
 const appendNymMsg = (
@@ -55,7 +55,7 @@ const failRequest = (request: SchedulerRequest, error: string) => {
   const { updateMsg, updateSchedulerRequest: updateQueueItem, deleteSchedulerRequest: removeQueueItem } = useAppStore.getState().actions
   updateMsg(request.msgId, {
     status: 'error',
-    content: `${useAppStore.getState().msgs[request.msgId]?.content ?? ''}\n\n(LLM error: ${error})`,
+    statusDetails: error,
   })
   updateQueueItem(request.id, { status: 'error', error })
   removeQueueItem(request.id)

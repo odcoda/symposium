@@ -22,9 +22,11 @@ export const useOpenRouterClient = (): OpenRouterClient | null => {
 
     return createOpenRouterClient({
       getTokens: () => tokensRef.current,
-      onUnauthorized: () => {
-        clearTokens()
-      },
+      // TODO: handle this better
+      // this was causing tons of auto-sign-outs during debugging which was very annoying
+      // onUnauthorized: () => {
+      //   clearTokens()
+      // },
     })
   }, [clearTokens, tokens])
 }

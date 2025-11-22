@@ -14,25 +14,13 @@ const ensureCredentials = () => {
   }
 }
 
-const parseScopes = (input?: string) =>
-  input
-    ?.split(/\s+/u)
-    .map((scope) => scope.trim())
-    .filter(Boolean) ?? []
-
-const mapTokenResponse = (response: OpenRouterTokenResponse): OpenRouterTokens => {
-  const expiresInMs = response.expires_in * 1000
-  const safetyBuffer = 60 * 1000
-  return {
-    accessToken: response.access_token,
-    refreshToken: response.refresh_token ?? null,
-    tokenType: response.token_type ?? 'Bearer',
-    scopes: parseScopes(response.scope).length
-      ? parseScopes(response.scope)
-      : openRouterEnv.scopes,
-    expiresAt: Date.now() + Math.max(expiresInMs - safetyBuffer, safetyBuffer),
-  }
-}
+const mapTokenResponse = (response: { key: string }): OpenRouterTokens => ({
+  accessToken: response.key,
+  refreshToken: null,
+  tokenType: 'Bearer',
+  scopes: [],
+  expiresAt: Number.POSITIVE_INFINITY,
+})
 
 export const createAuthorizationUrl = async (options?: {
   scopes?: string[]

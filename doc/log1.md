@@ -6,12 +6,12 @@
 - clean up call sites to specify necessary fields (in progress)
 
 ### Understanding the app-store code model
-▌ right now there's a general pattern where "Input" objects are missing a bunch of fields for the corresponding "actual"
-▌ objects (Arc, Nym, Msg, etc) which then get instantiated in app-store.ts. This pushes a lot of logic into app-store.ts that
-▌ we might want to be in a single place in the app (where the Arcs, Nyms, etc get created). what are the benefits and costs of
-▌ doing this / what are the trade offs here?
+> right now there's a general pattern where "Input" objects are missing a bunch of fields for the corresponding "actual"
+> objects (Arc, Nym, Msg, etc) which then get instantiated in app-store.ts. This pushes a lot of logic into app-store.ts that
+> we might want to be in a single place in the app (where the Arcs, Nyms, etc get created). what are the benefits and costs of
+> doing this / what are the trade offs here?
 
-> Right now the store acts as the factory: CreateArcInput, CreateNymInput, AppendMsgInput, etc. are lightweight “option bags”
+Right now the store acts as the factory: CreateArcInput, CreateNymInput, AppendMsgInput, etc. are lightweight “option bags”
   with just the caller-provided fields, and app-store.ts fills in the rest (IDs, timestamps, defaults). The trade-offs:
 
   Benefits of store-owned constructors
@@ -44,10 +44,10 @@
   the input/output types so other modules know the shapes, and consider extracting helper functions inside app-store.ts to keep
   it readable.
 
-▌ I guess what I'm saying is each of these is usually only called in one place so I could move all the logic into the single
-▌ caller of the app-store so the app store is simpler. is that a good or bad idea? why?
+> I guess what I'm saying is each of these is usually only called in one place so I could move all the logic into the single
+> caller of the app-store so the app store is simpler. is that a good or bad idea? why?
 
-> If each action has only one caller today, you could move the object‑construction logic into that caller and pass fully formed
+If each action has only one caller today, you could move the object‑construction logic into that caller and pass fully formed
   Arc, Msg, etc. into the store. But there are trade‑offs.
 
   Pros of moving logic out of the store
@@ -73,9 +73,9 @@
   time, keeping the construction in one shared spot (the store or a dedicated factory module) is safer. You can still extract
   helper functions to reduce clutter while preserving centralized invariants.
 
-▌ it feels like having all these defaults encourages sloppy data modeling by the caller
+> it feels like having all these defaults encourages sloppy data modeling by the caller
 
-> Centralizing defaults doesn’t encourage sloppy modeling—it protects you from it. The risk actually comes from the opposite
+Centralizing defaults doesn’t encourage sloppy modeling—it protects you from it. The risk actually comes from the opposite
   direction: if every caller is responsible for populating every field, you get inconsistent records (missing timestamps,
   mismatched IDs, scheduler state drifting). By pushing the defaults/invariants into one place (the store or a domain factory),
   the caller supplies only the business-specific bits (e.g., message text, selected nyms) and the shared layer guarantees the
@@ -100,17 +100,17 @@
 
 
 ### Understanding implicit types and type exports
-how does automatic type inference for structured types work in typescript? right now I have a type error because I'm passing
-▌ a string to a type that's been declared with a few string literals. how do I fix this? the error is:
-▌ src/components/MsgComposer.tsx:36:36 - error TS2345: Argument of type '{ authorId: string; authorRole: string; content:
-▌ string; status: string; }' is not assignable to parameter of type 'AppendMsgInput'.
-▌   Types of property 'authorRole' are incompatible.
-▌     Type 'string' is not assignable to type 'Role'.
-▌
-▌ 36     const msgId = appendMsg(arcId, msg)
-▌                                       ~~~
+> how does automatic type inference for structured types work in typescript? right now I have a type error because I'm passing
+> a string to a type that's been declared with a few string literals. how do I fix this? the error is:
+```src/components/MsgComposer.tsx:36:36 - error TS2345: Argument of type '{ authorId: string; authorRole: string; content:
+string; status: string; }' is not assignable to parameter of type 'AppendMsgInput'.
+  Types of property 'authorRole' are incompatible.
+    Type 'string' is not assignable to type 'Role'.
 
-> TypeScript is telling you that appendMsg expects an AppendMsgInput, where authorRole is the literal union type Role = 'user'
+36     const msgId = appendMsg(arcId, msg)
+```
+
+TypeScript is telling you that appendMsg expects an AppendMsgInput, where authorRole is the literal union type Role = 'user'
   | 'assistant' | 'system' (or similar). When you build msg inline like { authorRole: someString }, TS infers authorRole as
   plain string, which is broader than the allowed literals, so assignment fails.
 
@@ -165,13 +165,10 @@ how does automatic type inference for structured types work in typescript? right
   duplicating object literals and getting errors like the one you saw. So yes, it’s a smell—export the type or move it into
   types/ so the composer and the store agree on the exact shape.
 
-▌ can you look in app-store.ts and tell me whether these "input" types make sense at all? I'm not sure whether or not these
-▌ should just be lists of (keyword?) arguments instead of "...Input" types
+> can you look in app-store.ts and tell me whether these "input" types make sense at all? I'm not sure whether or not these
+> should just be lists of (keyword?) arguments instead of "...Input" types
 
-• Explored
-  └ Read app-store.ts
-
-> Those ...Input types are just plain object shapes that describe the payload each action consumes:
+Those ...Input types are just plain object shapes that describe the payload each action consumes:
 
   - CreateArcInput (web/src/stores/app-store.ts:66) lets callers provide optional properties (id, title, participant IDs). The
   action can give defaults for anything omitted.
@@ -233,12 +230,9 @@ In JavaScript you basically have three “structured” options:
   hooks. So think of Record as “typed dict”, and use a real Map only when the key requirements or performance characteristics
   truly demand it.
 
-▌ in types.ts, some things are types and others are interfaces. what's the difference? when should I use which one?
+> in types.ts, some things are types and others are interfaces. what's the difference? when should I use which one?
 
-• Explored
-  └ Read index.ts, app.ts
-
-> In TypeScript, interface and type can both describe object shapes, but they have slightly different capabilities:
+In TypeScript, interface and type can both describe object shapes, but they have slightly different capabilities:
 
   - Interfaces can be extended/merged. If you declare the same interface name twice, TypeScript merges the members (handy for
   augmenting declarations). Interfaces can only describe object/structural types.
@@ -312,7 +306,7 @@ Domain + UI
   algorithm.test.ts:3), and the legacy feature-level web/src/features/conversations/schedulerMath.ts file was removed.
 
 ### LocalStorage vs SessionStorage
-how are Local storage and Session storage different? should I be storing things in one or the other?
+> how are Local storage and Session storage different? should I be storing things in one or the other?
 
 localStorage and sessionStorage are both Web Storage APIs, but they differ in scope and lifetime:
 

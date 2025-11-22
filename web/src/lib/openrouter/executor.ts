@@ -30,6 +30,7 @@ export const executeChatCompletion = async ({
   onContentChunk,
 }: ExecuteChatCompletionParams): Promise<ExecuteChatCompletionResult> => {
   if (!client) {
+    // TODO: raise an obvious error here
     await sleep(800)
     const fallback = `(${request.model}) Stubbed response for development.`
     onContentChunk?.(fallback)
