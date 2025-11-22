@@ -4,18 +4,17 @@ import { createJSONStorage, devtools, persist } from 'zustand/middleware'
 import type {
   AppView,
   Arc,
-  CreateArcInput,
-  CreateMsgInput,
-  CreateNymInput,
+  PreArc,
+  PreMsg,
+  PreNym,
   Msg,
-  MsgStatus,
   Nym,
-  QueueRequestInput,
-  RequestQueueItem,
+  PreSchedulerRequest,
+  SchedulerRequest,
   SchedulerSettings,
-  UpdateMsgInput,
 } from '@/types'
 import type { NymSchedulerState, NymSchedulerStateMap } from '@/types/scheduler'
+import { assert } from '@/utils/debug'
 import { createId } from '@/utils/id'
 import { resolveStorage } from '@/utils/storage'
 
@@ -114,7 +113,7 @@ export const applySchedulerMsgUpdate = (
 
 interface SchedulerState {
   settings: SchedulerSettings
-  queue: RequestQueueItem[]
+  queue: SchedulerRequest[]
   inFlightIds: string[]
   nymStates: NymSchedulerStateMap
   msgCounter: number
@@ -136,22 +135,26 @@ interface BaseState {
 
 
 type AppActions = {
+  // UI
   setActiveView: (view: AppView) => void
   openSettings: () => void
   closeSettings: () => void
   setActiveArc: (arcId: string) => void
-  createArc: (input: CreateArcInput) => string
-  removeArc: (arcId: string) => void
-  createMsg: (input: CreateMsgInput) => string | undefined
+  // core data
+  createArc: (input: PreArc) => string
+  updateArc: (arcId: string, updates: Partial<Arc>) => void
+  deleteArc: (arcId: string) => void
+  createMsg: (input: PreMsg) => string
   updateMsg: (msgId: string, updates: Partial<Msg>) => void
-  createNym: (input: CreateNymInput) => string
+  deleteMsg: (msgId: string) => void
+  createNym: (input: PreNym) => string
   updateNym: (nymId: string, updates: Partial<Nym>) => void
   deleteNym: (nymId: string) => void
+  // scheduler
   updateSchedulerSettings: (settings: Partial<SchedulerSettings>) => void
-  queueRequest: (input: QueueRequestInput) => string
-  updateQueueItem: (requestId: string, updates: Partial<RequestQueueItem>) => void
-  removeQueueItem: (requestId: string) => void
-  markRequestInFlight: (requestId: string) => void
+  createSchedulerRequest: (input: PreSchedulerRequest) => string
+  updateSchedulerRequest: (requestId: string, updates: Partial<SchedulerRequest>) => void
+  deleteSchedulerRequest: (requestId: string) => void
 }
 
 export type AppState = BaseState & { actions: AppActions }
@@ -334,12 +337,29 @@ export const useAppStore = create<AppState>()(
 
             return arc.id
           },
-          removeArc: (arcId) =>
+          updateArc: (arcId, updates) =>
             set(
               (state) => {
-                if (!state.arcs[arcId]) {
-                  return {}
+                const existing = state.arcs[arcId]
+                assert(existing, `attempted to update nonexistent arc ${arcId}`)
+                return {
+                  arcs: {
+                    ...state.arcs,
+                    [arcId]: {
+                      ...existing,
+                      ...updates,
+                      id: existing.id,
+                    },
+                  },
                 }
+              },
+              false,
+              'arcs/update',
+            ),
+          deleteArc: (arcId) =>
+            set(
+              (state) => {
+                assert(state.arcs[arcId], `attempted to delete nonexistent arc ${arcId}`)
 
                 const rest = { ...state.arcs }
                 delete rest[arcId]
@@ -363,15 +383,12 @@ export const useAppStore = create<AppState>()(
                 }
               },
               false,
-              'arcs/remove',
+              'arcs/delete',
             ),
           createMsg: (input) => {
             const arcId = input.arcId
             const arc = get().arcs[arcId]
-            if (!arc) {
-              console.log("attempted to create msg on nonexistent arc ", arcId)
-              return undefined
-            }
+            assert(arc, `attempted to create msg on nonexistent arc ${arcId}`)
 
             const id = createId()
             const now = new Date().toISOString()
@@ -400,7 +417,7 @@ export const useAppStore = create<AppState>()(
                 scheduler: applySchedulerMsgUpdate(state, msg),
               }),
               false,
-              'msgs/append',
+              'msgs/create',
             )
 
             return id
@@ -409,9 +426,7 @@ export const useAppStore = create<AppState>()(
             set(
               (state) => {
                 const existing = state.msgs[msgId]
-                if (!existing) {
-                  return {}
-                }
+                assert(existing, `attempted to update nonexistent msg ${msgId}`)
 
                 return {
                   msgs: {
@@ -426,6 +441,20 @@ export const useAppStore = create<AppState>()(
               },
               false,
               'msgs/update',
+            ),
+          deleteMsg: (msgId) =>
+            set(
+              (state) => {
+                assert(state.msgs[msgId], `attempted to delete nonexistent msg ${msgId}`)
+
+                const rest = { ...state.msgs }
+                delete rest[msgId]
+                return {
+                  msgs: rest,
+                }
+              },
+              false,
+              'msgs/delete',
             ),
           createNym: (input) => {
             const id = createId()
@@ -462,9 +491,7 @@ export const useAppStore = create<AppState>()(
             set(
               (state) => {
                 const existing = state.nyms[nymId]
-                if (!existing) {
-                  return {}
-                }
+                assert(existing, `attempted to update nonexistent nym ${nymId}`)
 
                 return {
                   nyms: {
@@ -484,9 +511,7 @@ export const useAppStore = create<AppState>()(
           deleteNym: (nymId) =>
             set(
               (state) => {
-                if (!state.nyms[nymId]) {
-                  return {}
-                }
+                assert(state.nyms[nymId], `attempted to delete nonexistent nym ${nymId}`)
 
                 const rest = { ...state.nyms }
                 delete rest[nymId]
@@ -535,10 +560,11 @@ export const useAppStore = create<AppState>()(
               false,
               'scheduler/updateSettings',
             ),
-          queueRequest: (input) => {
-            const id = input.id ?? createId()
+          createSchedulerRequest: (input) => {
+            const id = createId()
             const enqueuedAt = Date.now()
-            const status = input.status ?? 'queued'
+            const status = 'queued'
+            const error = ''
 
             set(
               (state) => ({
@@ -553,7 +579,7 @@ export const useAppStore = create<AppState>()(
                       msgId: input.msgId,
                       enqueuedAt,
                       status,
-                      error: input.error,
+                      error,
                     },
                   ],
                 },
@@ -564,7 +590,7 @@ export const useAppStore = create<AppState>()(
 
             return id
           },
-          updateQueueItem: (requestId, updates) =>
+          updateSchedulerRequest: (requestId, updates) =>
             set(
               (state) => ({
                 scheduler: {
@@ -583,7 +609,7 @@ export const useAppStore = create<AppState>()(
               false,
               'scheduler/updateQueueItem',
             ),
-          removeQueueItem: (requestId) =>
+          deleteSchedulerRequest: (requestId) =>
             set(
               (state) => ({
                 scheduler: {
@@ -594,19 +620,6 @@ export const useAppStore = create<AppState>()(
               }),
               false,
               'scheduler/removeQueueItem',
-            ),
-          markRequestInFlight: (requestId) =>
-            set(
-              (state) => ({
-                scheduler: {
-                  ...state.scheduler,
-                  inFlightIds: state.scheduler.inFlightIds.includes(requestId)
-                    ? state.scheduler.inFlightIds
-                    : [...state.scheduler.inFlightIds, requestId],
-                },
-              }),
-              false,
-              'scheduler/markRequestInFlight',
             ),
         }
 

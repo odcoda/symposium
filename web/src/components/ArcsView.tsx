@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
+import { executeChatCompletion } from '@/lib/openrouter/executor'
 import { useAppStore } from '@/stores/app-store'
-import type { Arc, Msg, Nym } from '@/types'
+import type {
+  Arc,
+  Msg,
+  Nym,
+  OpenRouterChatCompletionRequest,
+  OpenRouterChatMsg,
+} from '@/types'
 
 import { MsgComposer } from './MsgComposer'
 import styles from './ArcsView.module.css'
@@ -52,14 +60,22 @@ export const ArcsView = () => {
   const msgs = useAppStore((state) => state.msgs)
   const nyms = useAppStore((state) => state.nyms)
   const activeArcId = useAppStore((state) => state.activeArcId)
-  const { setActiveArc, createArc } = useAppStore((state) => state.actions)
+  const { setActiveArc, createArc, createMsg, updateMsg } = useAppStore(
+    (state) => state.actions,
+  )
   const msgsEndRef = useRef<HTMLDivElement | null>(null)
+  const openRouterClient = useOpenRouterClient()
+  const [selectedNymId, setSelectedNymId] = useState('')
+  const [isRequestingNym, setIsRequestingNym] = useState(false)
+  const [requestError, setRequestError] = useState<string | null>(null)
 
   const arcList = useMemo(() => {
     return Object.values(arcs).sort((a, b) =>
       b.updatedAt.localeCompare(a.updatedAt),
     )
   }, [arcs])
+
+  const nymList = useMemo(() => Object.values(nyms), [nyms])
 
   const activeArc = activeArcId
     ? arcs[activeArcId]
@@ -76,6 +92,20 @@ export const ArcsView = () => {
   }, [activeArc, msgs])
 
   useEffect(() => {
+    setSelectedNymId((current) => {
+      if (current && nyms[current]) {
+        return current
+      }
+
+      const fallback =
+        activeArc?.activeNymIds.find((id) => nyms[id]) ??
+        nymList[0]?.id ??
+        ''
+      return fallback
+    })
+  }, [activeArc, nyms, nymList])
+
+  useEffect(() => {
     if (!msgsEndRef.current) {
       return
     }
@@ -87,8 +117,95 @@ export const ArcsView = () => {
     const newArcId = createArc({
       title: 'New Arc',
       participantIds: ['user'],
+      activeNymIds: [],
     })
     setActiveArc(newArcId)
+  }
+
+  const handleDirectResponseRequest = async () => {
+    if (!activeArc || !selectedNymId) {
+      setRequestError('Select an arc and nym to request a response.')
+      return
+    }
+
+    const nym = nyms[selectedNymId]
+    if (!nym) {
+      setRequestError('Selected nym no longer exists.')
+      return
+    }
+
+    setIsRequestingNym(true)
+    setRequestError(null)
+
+    const promptMsgs: OpenRouterChatMsg[] = activeMsgs.map((msg) => {
+      if (msg.authorRole === 'user') {
+        return { role: 'user', content: msg.content }
+      }
+
+      if (msg.authorRole === 'assistant') {
+        return {
+          role: 'assistant',
+          content: msg.content,
+          name: nyms[msg.authorId ?? '']?.name ?? undefined,
+        }
+      }
+
+      return { role: 'system', content: msg.content }
+    })
+
+    const requestBody: OpenRouterChatCompletionRequest = {
+      model: nym.model,
+      messages: [
+        { role: 'system', content: nym.prompt || 'You are a helpful collaborator.' },
+        ...promptMsgs,
+      ],
+      temperature: nym.temperature,
+      metadata: {
+        arcId: activeArc.id,
+        nymId: nym.id,
+      },
+    }
+
+    const placeholderMsgId = createMsg({
+      arcId: activeArc.id,
+      authorId: nym.id,
+      authorRole: 'assistant',
+      content: '',
+      status: 'streaming',
+    })
+
+    let assembledContent = ''
+    try {
+      await executeChatCompletion({
+        client: openRouterClient,
+        request: requestBody,
+        onContentChunk: (chunk) => {
+          assembledContent += chunk
+          updateMsg(placeholderMsgId, {
+            content: assembledContent,
+            updatedAt: new Date().toISOString(),
+          })
+        },
+      })
+
+      const finalContent = (assembledContent || '').trim()
+      updateMsg(placeholderMsgId, {
+        content: finalContent.length ? finalContent : '(No response)',
+        status: 'complete',
+        updatedAt: new Date().toISOString(),
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Direct request failed'
+      setRequestError(message)
+      updateMsg(placeholderMsgId, {
+        status: 'error',
+        content: message,
+        updatedAt: new Date().toISOString(),
+      })
+    } finally {
+      setIsRequestingNym(false)
+    }
   }
 
   return (
@@ -157,6 +274,37 @@ export const ArcsView = () => {
                 ) : null}
                 <div ref={msgsEndRef} />
               </div>
+              <div className={styles.directRequestControls}>
+                <label htmlFor="direct-nym-select" className={styles.directRequestLabel}>
+                  Request direct response
+                </label>
+                <select
+                  id="direct-nym-select"
+                  className={styles.directRequestSelect}
+                  value={selectedNymId}
+                  onChange={(event) => setSelectedNymId(event.target.value)}
+                  disabled={isRequestingNym || nymList.length === 0}
+                >
+                  {nymList.map((nym) => (
+                    <option key={nym.id} value={nym.id}>
+                      {nym.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={styles.directRequestButton}
+                  onClick={handleDirectResponseRequest}
+                  disabled={
+                    isRequestingNym || !selectedNymId || !activeArc || nymList.length === 0
+                  }
+                >
+                  {isRequestingNym ? 'Requesting…' : 'Send request'}
+                </button>
+              </div>
+              {requestError ? (
+                <div className={styles.directRequestError}>{requestError}</div>
+              ) : null}
               <MsgComposer arcId={activeArc.id} />
             </div>
           </>

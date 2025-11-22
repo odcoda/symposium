@@ -129,6 +129,50 @@
   gap: 1rem;
 }
 
+.directRequestControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-elevated);
+  align-items: center;
+}
+
+.directRequestLabel {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.directRequestSelect {
+  min-width: 160px;
+  flex: 1;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-secondary);
+  padding: 0.35rem 0.75rem;
+}
+
+.directRequestButton {
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.65rem;
+  background: var(--surface-secondary);
+  padding: 0.4rem 0.9rem;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.directRequestButton:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+.directRequestError {
+  font-size: 0.8rem;
+  color: #f87171;
+  margin-top: -0.25rem;
+}
+
 .msgs {
   flex: 1;
   display: flex;

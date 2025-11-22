@@ -5,7 +5,7 @@ import {
   applySchedulerMsgUpdate,
   createNymSchedulerState,
 } from '@/stores/app-store'
-import type { AppView, Msg, Nym, RequestQueueItem, SchedulerSettings } from '@/types'
+import type { AppView, Msg, Nym, SchedulerRequest, SchedulerSettings } from '@/types'
 import type { NymSchedulerStateMap } from '@/types/scheduler'
 
 describe('arc scheduling algorithm', () => {
@@ -54,7 +54,7 @@ describe('arc scheduling algorithm', () => {
       politenessDecayMultiplier: 0.8,
     }
 
-    const buildRequest = (authorId: string): RequestQueueItem => ({
+    const buildRequest = (authorId: string): SchedulerRequest => ({
       id: `${authorId}-request`,
       authorId,
       arcId: 'arc',
@@ -72,7 +72,7 @@ describe('arc scheduling algorithm', () => {
       activeArcId: null,
       scheduler: {
         settings: schedulerSettings,
-        queue: [] as RequestQueueItem[],
+        queue: [] as SchedulerRequest[],
         inFlightIds: [] as string[],
         nymStates: {
           alpha: createNymSchedulerState(0),

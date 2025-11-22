@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { FormEventHandler, KeyboardEventHandler } from 'react'
 
 import { useAppStore } from '@/stores/app-store'
-import { type AppendMsgInput } from '@/types/app'
+import type { PreMsg } from '@/types/app'
 
 import styles from './MsgComposer.module.css'
 
@@ -13,8 +13,8 @@ type MsgComposerProps = {
 export const MsgComposer = ({ arcId }: MsgComposerProps) => {
   const [content, setContent] = useState('')
   const arc = useAppStore((state) => state.arcs[arcId])
-  const appendMsg = useAppStore((state) => state.actions.appendMsg)
-  const queueRequest = useAppStore((state) => state.actions.queueRequest)
+  const createMsg = useAppStore((state) => state.actions.createMsg)
+  const queueRequest = useAppStore((state) => state.actions.createSchedulerRequest)
 
   const trimmedContent = useMemo(() => content.trim(), [content])
   const isDisabled = !arc || trimmedContent.length === 0
@@ -26,14 +26,15 @@ export const MsgComposer = ({ arcId }: MsgComposerProps) => {
 
     const authorId = 'user'
 
-    const msg: AppendMsgInput = {
+    const msg: PreMsg = {
+      arcId,
       authorId,
       authorRole: 'user',
       content: trimmedContent,
       status: 'complete',
     }
 
-    const msgId = appendMsg(arcId, msg)
+    const msgId = createMsg(msg)
 
     console.log('new msg', msg)
 

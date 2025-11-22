@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react'
 import { useMemo } from 'react'
 
 import { useAppStore } from '@/stores/app-store'
-import type { Nym } from '@/types'
+import type { Nym, PreNym } from '@/types'
 
 import styles from './NymsView.module.css'
 
@@ -13,6 +13,29 @@ const MODEL_OPTIONS = [
   'google/gemini-2.0-flash',
   'openai/gpt-4.1-mini',
 ]
+
+const COLOR_OPTIONS = [
+  '#6366f1',
+  '#ec4899',
+  '#f97316',
+  '#14b8a6',
+  '#0ea5e9',
+  '#a855f7',
+]
+
+const DEFAULT_NYM_SETTINGS: Omit<PreNym, 'name' | 'color'> = {
+  model: MODEL_OPTIONS[0],
+  description: '',
+  prompt: '',
+  temperature: 0.6,
+  eagerness: 0.5,
+  politenessPenalty: 0.2,
+  politenessHalfLife: 4,
+  mentionBoost: 1,
+  autoRespond: true,
+}
+
+const pickColor = (index: number) => COLOR_OPTIONS[index % COLOR_OPTIONS.length]
 
 const formatPercent = (value: number, max = 1) => `${Math.round((value / max) * 100)}%`
 
@@ -141,8 +164,12 @@ export const NymsView = () => {
   const nyms = useMemo(() => Object.values(nymsById), [nymsById])
 
   const handleAddNym = () => {
+    const nextIndex = nyms.length + 1
+
     createNym({
-      name: `Nym ${nyms.length + 1}`,
+      ...DEFAULT_NYM_SETTINGS,
+      name: `Nym ${nextIndex}`,
+      color: pickColor(nextIndex - 1),
     })
   }
 

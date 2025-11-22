@@ -8,7 +8,7 @@ import type {
   Msg,
   OpenRouterChatCompletionRequest,
   OpenRouterChatMsg,
-  RequestQueueItem,
+  SchedulerRequest,
 } from '@/types'
 
 const buildPromptMsgs = (arcId: string, msgId: string) => {
@@ -36,30 +36,23 @@ const markMsgStreaming = (msgId: string) => {
 }
 
 const appendNymMsg = (
-  request: RequestQueueItem,
+  request: SchedulerRequest,
   content: string,
 ) => {
+  // TDOO I think this code does nothing
   const state = useAppStore.getState()
-  const { appendMsg, updateMsg, removeQueueItem } = state.actions
-  const nym = state.nyms[request.authorId]
-  const now = new Date().toISOString()
-
-  const msgId = appendMsg(request.arcId, {
+  const msgId = state.actions.createMsg({
+    arcId: request.arcId,
     authorId: request.authorId,
     authorRole: 'assistant',
     content,
-    createdAt: now,
-    nymId: nym?.id,
     status: 'complete',
   })
-
-  updateMsg(request.msgId, { status: 'complete' })
-  removeQueueItem(request.id)
   return msgId
 }
 
-const failRequest = (request: RequestQueueItem, error: string) => {
-  const { updateMsg, updateQueueItem, removeQueueItem } = useAppStore.getState().actions
+const failRequest = (request: SchedulerRequest, error: string) => {
+  const { updateMsg, updateSchedulerRequest: updateQueueItem, deleteSchedulerRequest: removeQueueItem } = useAppStore.getState().actions
   updateMsg(request.msgId, {
     status: 'error',
     content: `${useAppStore.getState().msgs[request.msgId]?.content ?? ''}\n\n(LLM error: ${error})`,
@@ -74,18 +67,19 @@ export const ArcScheduler = () => {
   const settings = useAppStore((state) => state.scheduler.settings)
   const nymStates = useAppStore((state) => state.scheduler.nymStates)
   const nyms = useAppStore((state) => state.nyms)
-  const markInFlight = useAppStore((state) => state.actions.markRequestInFlight)
-  const updateQueueItem = useAppStore((state) => state.actions.updateQueueItem)
+  // TODO useless?
+  // const markInFlight = useAppStore((state) => state.actions.markRequestInFlight)
+  const updateQueueItem = useAppStore((state) => state.actions.updateSchedulerRequest)
   const openRouterClient = useOpenRouterClient()
 
   const activeRequests = useRef(new Set<string>())
 
   const startRequest = useCallback(
-    async (request: RequestQueueItem) => {
+    async (request: SchedulerRequest) => {
       try {
         console.log("processing request", request)
         activeRequests.current.add(request.id)
-        markInFlight(request.id)
+        // markInFlight(request.id)
         updateQueueItem(request.id, { status: 'in-flight' })
         markMsgStreaming(request.msgId)
 
@@ -157,7 +151,7 @@ export const ArcScheduler = () => {
         activeRequests.current.delete(request.id)
       }
     },
-    [markInFlight, openRouterClient, updateQueueItem],
+    [openRouterClient, updateQueueItem],
   )
 
   const queuedItems = useMemo(

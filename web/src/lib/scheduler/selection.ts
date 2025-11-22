@@ -1,10 +1,10 @@
-import type { Nym, RequestQueueItem } from '@/types'
+import type { Nym, SchedulerRequest } from '@/types'
 import type { NymSchedulerState } from '@/types/scheduler'
 
 import { MIN_SELECTION_TEMPERATURE, sampleIndexFromLogits } from './math'
 
 export const calculateRequestLogits = (
-  requests: Pick<RequestQueueItem, 'authorId'>[],
+  requests: Pick<SchedulerRequest, 'authorId'>[],
   nyms: Record<string, Nym>,
   nymStates: Record<string, NymSchedulerState | undefined>,
 ): number[] =>
@@ -24,7 +24,7 @@ export const calculateRequestLogits = (
   })
 
 export interface SelectRequestsForSlotsParams {
-  queue: RequestQueueItem[]
+  queue: SchedulerRequest[]
   nyms: Record<string, Nym>
   nymStates: Record<string, NymSchedulerState | undefined>
   selectionTemperature: number
@@ -42,7 +42,7 @@ export const selectRequestsForSlots = ({
   selectionTemperature,
   slots,
   activeRequestIds,
-}: SelectRequestsForSlotsParams): RequestQueueItem[] => {
+}: SelectRequestsForSlotsParams): SchedulerRequest[] => {
   if (slots <= 0) {
     return []
   }
@@ -61,7 +61,7 @@ export const selectRequestsForSlots = ({
   })
 
   const workingList = [...candidates]
-  const selections: RequestQueueItem[] = []
+  const selections: SchedulerRequest[] = []
   const safeTemperature = Math.max(MIN_SELECTION_TEMPERATURE, selectionTemperature)
 
   while (selections.length < slots && workingList.length > 0) {

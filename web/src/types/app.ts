@@ -38,7 +38,7 @@ export type MsgStatus = 'complete' | 'streaming' | 'error' | 'cancelled'
   generation - raw generation info (e.g. cost, token counts) from model provider (for debugging)
   debug - additional info for debugging
 */
-export interface Msg {
+export type Msg = {
   id: string
   arcId: string
   authorId: string
@@ -67,6 +67,13 @@ export interface Msg {
 
   TODO add more configurable parameters
 
+  It is currently possible to delete a nym. But this probably isn't actually desirable
+  because it breaks the object model. How we handle this today is by removing the
+  nym as active from all arcs, but leaving the messages referencing it lying around.
+  This is scary and probably going to blow up at some point.
+
+  TODO do this better.
+
   id - Unique identifier for the nym. This is used as the authorId in msgs.
   name - Display name for the nym
   description - Display description
@@ -82,7 +89,7 @@ export interface Msg {
   updatedAt - Timestamp
   debug - additional info for debugging
 */
-export interface Nym {
+export type Nym = {
   id: string
   name: string
   description: string
@@ -106,8 +113,10 @@ export interface Nym {
 
   We track all participants who have ever been in the arc, as well as
   the active nyms (for rendering in the UI).
+
+  An arc can be deleted. Deleting an arc deletes all messages in it.
   */
-export interface Arc {
+export type Arc = {
   id: string
   title: string
   participantIds: string[]
@@ -120,7 +129,7 @@ export interface Arc {
 
 export type ResponsePacing = 'relaxed' | 'steady' | 'quick'
 
-export interface SchedulerSettings {
+export type SchedulerSettings = {
   maxConcurrent: number
   responseDelayMs: number
   responsePacing: ResponsePacing
@@ -132,7 +141,7 @@ export interface SchedulerSettings {
 
 export type RequestStatus = 'queued' | 'in-flight' | 'completed' | 'cancelled' | 'error'
 
-export interface RequestQueueItem {
+export type SchedulerRequest = {
   id: string
   arcId: string
   authorId: string
@@ -143,13 +152,13 @@ export interface RequestQueueItem {
   debug?: string
 }
 
-export type CreateArcInput = {
+export type PreArc = {
   title: string
   participantIds: string[]
   activeNymIds: string[]
 }
 
-export type CreateMsgInput = {
+export type PreMsg = {
   arcId: string
   authorId: string
   authorRole: Role
@@ -157,12 +166,7 @@ export type CreateMsgInput = {
   status: MsgStatus
 }
 
-export type UpdateMsgInput = {
-  content: string
-  status: MsgStatus
-}
-
-export type CreateNymInput = {
+export type PreNym = {
   name: string
   model: string
   description: string
@@ -176,8 +180,8 @@ export type CreateNymInput = {
   color: string
 }
 
-export type QueueRequestInput = Omit<RequestQueueItem, 'id' | 'enqueuedAt' | 'status'> & {
-  id?: string
-  status?: RequestQueueItem['status']
-  error?: string
+export type PreSchedulerRequest = {
+  arcId: string
+  authorId: string
+  msgId: string
 }
