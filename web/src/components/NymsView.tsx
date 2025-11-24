@@ -12,6 +12,14 @@ const MODEL_OPTIONS = [
   'anthropic/claude-3.5-sonnet',
   'google/gemini-2.0-flash',
   'openai/gpt-4.1-mini',
+  // add some free options
+  // TODO change this to a typeahead with drop down
+  // TODO query openrouter to check metadata
+  "x-ai/grok-4.1-fast",
+  "openai/gpt-oss-20b:free",
+  "z-ai/glm-4.5-air:free",
+  "qwen/qwen3-coder:free",
+  "moonshotai/kimi-k2:free",
 ]
 
 const COLOR_OPTIONS = [

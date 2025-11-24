@@ -1,3 +1,9 @@
+## 2025-11-24
+### Manual fixes
+- auth expiration isn't checked to avoid the bug where it always thinks it expired (because null <= (any Date.now()) by numerical conversion)
+- added some free models -- it works now!
+- need to fix streaming
+
 ## 2025-11-22
 ### More auth fixes
 #### Store the key correctly

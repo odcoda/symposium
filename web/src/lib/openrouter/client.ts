@@ -13,7 +13,7 @@ export interface OpenRouterClientOptions {
   onUnauthorized?: () => void
 }
 
-const isTokenExpired = (tokens: OpenRouterTokens) => tokens.expiresAt <= Date.now()
+// const isTokenExpired = (tokens: OpenRouterTokens) => tokens.expiresAt <= Date.now()
 
 export class OpenRouterClient {
   private readonly getTokens: () => OpenRouterTokens | null
@@ -33,10 +33,10 @@ export class OpenRouterClient {
       throw new Error('OpenRouter tokens are not available')
     }
 
-    if (isTokenExpired(tokens)) {
-      this.onUnauthorized?.()
-      throw new Error('OpenRouter access token expired')
-    }
+    // if (isTokenExpired(tokens)) {
+    //   this.onUnauthorized?.()
+    //   throw new Error('OpenRouter access token expired')
+    // }
 
     headers.set('Authorization', `${tokens.tokenType ?? 'Bearer'} ${tokens.accessToken}`)
     if (!headers.has('Content-Type')) {
@@ -84,7 +84,7 @@ export class OpenRouterClient {
   }
 
   createChatCompletion(body: OpenRouterChatCompletionRequest) {
-    return this.request<OpenRouterChatCompletionResponse>('/responses', {
+    return this.request<OpenRouterChatCompletionResponse>('/chat/completions', {
       method: 'POST',
       body: JSON.stringify(body),
     })
