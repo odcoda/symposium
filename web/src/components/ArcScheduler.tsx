@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
 import { executeChatCompletion } from '@/lib/openrouter/executor'
-import { deriveAvailableSlots, selectRequestsForSlots } from '@/lib/scheduler'
+import { scheduleNyms } from '@/lib/scheduler'
 import { useAppStore } from '@/stores/app-store'
 import type {
   Msg,
@@ -35,27 +35,27 @@ const markMsgStreaming = (msgId: string) => {
   updateMsg(msgId, { status: 'streaming', statusDetails: undefined })
 }
 
-const appendNymMsg = (
-  request: SchedulerRequest,
-  content: string,
-) => {
-  // TDOO I think this code does nothing
-  const state = useAppStore.getState()
-  const msgId = state.actions.createMsg({
-    arcId: request.arcId,
-    authorId: request.authorId,
-    authorRole: 'assistant',
-    content,
-    status: 'complete',
-  })
-  return msgId
-}
+const failRequest = (request: SchedulerRequest, error: string, responseMsgId?: string | null) => {
+  const {
+    updateMsg,
+    updateSchedulerRequest: updateQueueItem,
+    deleteSchedulerRequest: removeQueueItem,
+  } = useAppStore.getState().actions
 
-const failRequest = (request: SchedulerRequest, error: string) => {
-  const { updateMsg, updateSchedulerRequest: updateQueueItem, deleteSchedulerRequest: removeQueueItem } = useAppStore.getState().actions
+  const timestamp = new Date().toISOString()
+
+  if (responseMsgId) {
+    updateMsg(responseMsgId, {
+      status: 'error',
+      statusDetails: error,
+      updatedAt: timestamp,
+    })
+  }
+
   updateMsg(request.msgId, {
     status: 'error',
     statusDetails: error,
+    updatedAt: timestamp,
   })
   updateQueueItem(request.id, { status: 'error', error })
   removeQueueItem(request.id)
@@ -63,13 +63,12 @@ const failRequest = (request: SchedulerRequest, error: string) => {
 
 export const ArcScheduler = () => {
   const queue = useAppStore((state) => state.scheduler.queue)
-  const inFlightIds = useAppStore((state) => state.scheduler.inFlightIds)
   const settings = useAppStore((state) => state.scheduler.settings)
   const nymStates = useAppStore((state) => state.scheduler.nymStates)
   const nyms = useAppStore((state) => state.nyms)
-  // TODO useless?
-  // const markInFlight = useAppStore((state) => state.actions.markRequestInFlight)
+  const updateQueue = useAppStore((state) => state.actions.updateSchedulerQueue)
   const updateQueueItem = useAppStore((state) => state.actions.updateSchedulerRequest)
+  const removeQueueItem = useAppStore((state) => state.actions.deleteSchedulerRequest)
   const openRouterClient = useOpenRouterClient()
 
   const activeRequests = useRef(new Set<string>())
@@ -77,10 +76,9 @@ export const ArcScheduler = () => {
   const startRequest = useCallback(
     async (request: SchedulerRequest) => {
       try {
-        console.log("processing request", request)
+        console.log("[scheduler] handling request: ", request)
         activeRequests.current.add(request.id)
-        // markInFlight(request.id)
-        updateQueueItem(request.id, { status: 'in-flight' })
+        updateQueueItem(request.id, { status: 'in-flight', error: undefined })
         markMsgStreaming(request.msgId)
 
         const msgs = buildPromptMsgs(request.arcId, request.msgId)
@@ -118,6 +116,7 @@ export const ArcScheduler = () => {
           return { role: 'system', content: msg.content }
         })
 
+        console.log("[scheduler] messages: ", promptMsgs)
         const requestBody: OpenRouterChatCompletionRequest = {
           model: nym.model,
           messages: [
@@ -134,81 +133,96 @@ export const ArcScheduler = () => {
           },
         }
 
+        const actions = useAppStore.getState().actions
+        let responseMsgId = request.responseMsgId ?? null
+        if (!responseMsgId) {
+          responseMsgId = actions.createMsg({
+            arcId: request.arcId,
+            authorId: nym.id,
+            authorRole: 'assistant',
+            nymId: nym.id,
+            content: '',
+            status: 'streaming',
+          })
+          updateQueueItem(request.id, { responseMsgId })
+        } else {
+          actions.updateMsg(responseMsgId, {
+            status: 'streaming',
+            statusDetails: undefined,
+            updatedAt: new Date().toISOString(),
+          })
+        }
+
         let assembledContent = ''
-        const result = await executeChatCompletion({
+        await executeChatCompletion({
           client: openRouterClient,
           request: requestBody,
           onContentChunk: (chunk) => {
+            if (!chunk) {
+              return
+            }
             assembledContent += chunk
+            if (responseMsgId) {
+              actions.updateMsg(responseMsgId, {
+                content: assembledContent,
+                statusDetails: undefined,
+                updatedAt: new Date().toISOString(),
+              })
+            }
           },
         })
 
-        appendNymMsg(request, assembledContent || result.content)
+        const finalContent = (assembledContent || '').trim()
+        if (responseMsgId) {
+          actions.updateMsg(responseMsgId, {
+            content: finalContent.length ? finalContent : '(No response)',
+            status: 'complete',
+            statusDetails: undefined,
+            updatedAt: new Date().toISOString(),
+          })
+        }
+
+        actions.updateMsg(request.msgId, {
+          status: 'complete',
+          statusDetails: undefined,
+          updatedAt: new Date().toISOString(),
+        })
+        removeQueueItem(request.id)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown scheduler error'
-        failRequest(request, message)
+        const queueItem = useAppStore
+          .getState()
+          .scheduler.queue.find((item) => item.id === request.id)
+        const fallbackResponseId = queueItem?.responseMsgId ?? request.responseMsgId ?? null
+        failRequest(request, message, fallbackResponseId)
       } finally {
         activeRequests.current.delete(request.id)
       }
     },
-    [openRouterClient, updateQueueItem],
+    [openRouterClient, removeQueueItem, updateQueueItem],
   )
-
-  const queuedItems = useMemo(
-    () => queue.filter((item) => item.status === 'queued'),
-    [queue],
-  )
-
-  const inFlightCount = inFlightIds.length
 
   useEffect(() => {
-    if (!settings.autoStart) {
+    console.log("[scheduler] checking")
+    if (!queue.length) {
       return
     }
-
-    if (!queuedItems.length) {
-      return
-    }
-
-    const arcId = queuedItems[0]?.arcId
-    if (!arcId) {
-      return
-    }
-
-    const arcExists = Boolean(useAppStore.getState().arcs[arcId])
-    if (!arcExists) {
-      return
-    }
-
-    const slots = deriveAvailableSlots(settings.maxConcurrent, inFlightCount)
-    if (slots <= 0) {
-      return
-    }
-
-    const nextBatch = selectRequestsForSlots({
-      queue: queuedItems,
+    const out = scheduleNyms({
+      queue,
       nyms,
       nymStates,
-      selectionTemperature: settings.selectionTemperature,
-      slots,
       activeRequestIds: activeRequests.current,
+      settings,
     })
 
-    nextBatch.forEach((request) => {
-      if (activeRequests.current.has(request.id)) {
-        return
-      }
+    out.requests.forEach(startRequest)
 
-      startRequest(request)
-    })
+    updateQueue(out.newQueue)
   }, [
-    inFlightCount,
     nymStates,
     nyms,
-    queuedItems,
-    settings.autoStart,
-    settings.maxConcurrent,
-    settings.selectionTemperature,
+    queue,
+    settings,
     startRequest,
   ])
 

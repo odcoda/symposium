@@ -5,8 +5,10 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
 const projectRootDir = fileURLToPath(new URL('.', import.meta.url))
+const PUBLIC_BASE_PATH = '/symposium/'
 
 export default defineConfig({
+  base: PUBLIC_BASE_PATH,
   plugins: [react()],
   resolve: {
     alias: {

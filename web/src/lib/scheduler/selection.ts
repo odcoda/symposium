@@ -1,81 +1,52 @@
-import type { Nym, SchedulerRequest } from '@/types'
-import type { NymSchedulerState } from '@/types/scheduler'
+import type { SchedulerRequest} from '@/types'
+import type { NymSchedulerStateMap, ScheduleParams } from '@/types/scheduler'
 
 import { MIN_SELECTION_TEMPERATURE, sampleIndexFromLogits } from './math'
 
-export const calculateRequestLogits = (
-  requests: Pick<SchedulerRequest, 'authorId'>[],
-  nyms: Record<string, Nym>,
-  nymStates: Record<string, NymSchedulerState | undefined>,
-): number[] =>
-  requests.map((request) => {
-    const nym = nyms[request.authorId]
-    const state = nymStates[request.authorId]
 
-    if (!nym) {
-      return Number.NEGATIVE_INFINITY
-    }
-
-    const mentionScore = state?.mentionScore ?? 0
-    const politenessScore = state?.politenessScore ?? 0
-    const baseEagerness = nym.eagerness ?? 0
-
-    return baseEagerness + mentionScore + politenessScore
-  })
-
-export interface SelectRequestsForSlotsParams {
-  queue: SchedulerRequest[]
-  nyms: Record<string, Nym>
-  nymStates: Record<string, NymSchedulerState | undefined>
-  selectionTemperature: number
-  slots: number
-  activeRequestIds?: Iterable<string>
-}
-
-export const deriveAvailableSlots = (maxConcurrent: number, activeCount: number): number =>
-  Math.max(0, maxConcurrent - activeCount)
-
-export const selectRequestsForSlots = ({
+export const scheduleNyms = ({
   queue,
   nyms,
   nymStates,
-  selectionTemperature,
-  slots,
   activeRequestIds,
-}: SelectRequestsForSlotsParams): SchedulerRequest[] => {
+  settings,
+}: ScheduleParams): { requests: SchedulerRequest[], newQueue: SchedulerRequest[], newNymStates: NymSchedulerStateMap } => {
+  const slots = settings.maxConcurrent - activeRequestIds.size
+
   if (slots <= 0) {
-    return []
+    return { requests: [], newQueue: queue, newNymStates: nymStates } // nothing to do
   }
 
-  const activeSet = new Set(activeRequestIds ?? [])
-  const candidates = queue.filter((item) => {
-    if (item.status !== 'queued') {
-      return false
+  const newQueue = queue.filter((request) => {
+    if (settings.responsePacing === 'relaxed') {
+      return request.authorId === "user"
+    } else if (settings.responsePacing === 'steady') {
+      return request.authorId !== "timer"
+    } else {
+      return true
     }
-
-    if (activeSet.has(item.id)) {
-      return false
-    }
-
-    return Boolean(nyms[item.authorId])
   })
 
-  const workingList = [...candidates]
-  const selections: SchedulerRequest[] = []
-  const safeTemperature = Math.max(MIN_SELECTION_TEMPERATURE, selectionTemperature)
-
-  while (selections.length < slots && workingList.length > 0) {
-    const logits = calculateRequestLogits(workingList, nyms, nymStates)
-    const selectedIndex = sampleIndexFromLogits(logits, safeTemperature)
-    if (selectedIndex < 0) {
-      break
-    }
-
-    const [selected] = workingList.splice(selectedIndex, 1)
-    if (selected) {
-      selections.push(selected)
-    }
+  if (newQueue.length === 0) {
+    return { requests: [], newQueue: [], newNymStates: nymStates } // nothing to do
   }
 
-  return selections
+  const requests: SchedulerRequest[] = []
+  const safeTemperature = Math.max(MIN_SELECTION_TEMPERATURE, settings.selectionTemperature)
+  const nymIds = Array.from(Object.keys(nyms))
+  while (requests.length < slots && newQueue.length > 0) {
+    const logits = nymIds.map((nymId) =>
+      nyms[nymId].eagerness +
+    nymStates[nymId].mentionScore + nymStates[nymId].politenessScore)
+    console.log("[scheduleNyms] logits", logits)
+    const req = newQueue.shift()!
+    const selectedIndex = sampleIndexFromLogits(logits, safeTemperature)
+    const nymId = nymIds[selectedIndex]
+    console.log("[scheduleNyms] selected: ", nyms[nymId].name)
+    requests.push({
+      ...req,
+      authorId: nymId,
+    })
+  }
+  return { requests, newQueue, newNymStates: nymStates }
 }

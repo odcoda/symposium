@@ -14,7 +14,7 @@ const ensureCredentials = () => {
   }
 }
 
-const mapTokenResponse = (response: { key: string }): OpenRouterTokens => ({
+const mapTokenResponse = (response: OpenRouterTokenResponse): OpenRouterTokens => ({
   accessToken: response.key,
   refreshToken: null,
   tokenType: 'Bearer',
@@ -101,31 +101,6 @@ export const exchangeAuthorizationCode = async (params: { code: string; state: s
   return mapTokenResponse(json)
 }
 
-export const refreshAccessToken = async (refreshToken: string) => {
-  ensureCredentials()
-  const payload = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-  })
-
-  if (openRouterEnv.clientId) {
-    payload.set('client_id', openRouterEnv.clientId)
-  }
-
-  const response = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
-    body: payload,
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Failed to refresh access token: ${errorText}`)
-  }
-
-  const json = (await response.json()) as OpenRouterTokenResponse
-  return mapTokenResponse(json)
+export const refreshAccessToken = async () => {
+  throw new Error('OpenRouter tokens do not support refresh. Please re-authenticate.')
 }

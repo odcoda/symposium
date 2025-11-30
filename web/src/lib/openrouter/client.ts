@@ -42,7 +42,9 @@ export class OpenRouterClient {
     if (!headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json')
     }
-    headers.set('Accept', 'application/json')
+    if (!headers.has('Accept')) {
+      headers.set('Accept', 'application/json')
+    }
 
     if (openRouterEnv.appUrl) {
       headers.set('HTTP-Referer', openRouterEnv.appUrl)
@@ -88,6 +90,30 @@ export class OpenRouterClient {
       method: 'POST',
       body: JSON.stringify(body),
     })
+  }
+
+  async streamChatCompletion(body: OpenRouterChatCompletionRequest, signal?: AbortSignal) {
+    const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: this.buildHeaders({
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ ...body, stream: true }),
+      signal,
+    })
+
+    if (response.status === 401) {
+      this.onUnauthorized?.()
+      throw new Error('OpenRouter request unauthorized')
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`OpenRouter request failed: ${errorText}`)
+    }
+
+    return response
   }
 }
 

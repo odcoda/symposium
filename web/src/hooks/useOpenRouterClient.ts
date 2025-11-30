@@ -7,7 +7,6 @@ import { useOpenRouterStore } from '@/stores/openrouter-store'
 
 export const useOpenRouterClient = (): OpenRouterClient | null => {
   const tokens = useOpenRouterStore((state) => state.tokens)
-  const clearTokens = useOpenRouterStore((state) => state.actions.clearTokens)
 
   const tokensRef = useRef<OpenRouterTokens | null>(tokens)
 
@@ -28,5 +27,5 @@ export const useOpenRouterClient = (): OpenRouterClient | null => {
       //   clearTokens()
       // },
     })
-  }, [clearTokens, tokens])
+  }, [tokens])
 }

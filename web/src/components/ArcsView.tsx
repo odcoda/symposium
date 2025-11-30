@@ -66,7 +66,7 @@ export const ArcsView = () => {
   const msgsEndRef = useRef<HTMLDivElement | null>(null)
   const openRouterClient = useOpenRouterClient()
   const [selectedNymId, setSelectedNymId] = useState('')
-  const [isRequestingNym, setIsRequestingNym] = useState(false)
+  const [pendingDirectRequests, setPendingDirectRequests] = useState(0)
   const [requestError, setRequestError] = useState<string | null>(null)
 
   const arcList = useMemo(() => {
@@ -134,7 +134,7 @@ export const ArcsView = () => {
       return
     }
 
-    setIsRequestingNym(true)
+    setPendingDirectRequests((count) => count + 1)
     setRequestError(null)
 
     const promptMsgs: OpenRouterChatMsg[] = activeMsgs.map((msg) => {
@@ -206,7 +206,7 @@ export const ArcsView = () => {
         updatedAt: new Date().toISOString(),
       })
     } finally {
-      setIsRequestingNym(false)
+      setPendingDirectRequests((count) => Math.max(0, count - 1))
     }
   }
 
@@ -298,7 +298,7 @@ export const ArcsView = () => {
                   className={styles.directRequestSelect}
                   value={selectedNymId}
                   onChange={(event) => setSelectedNymId(event.target.value)}
-                  disabled={isRequestingNym || nymList.length === 0}
+                  disabled={nymList.length === 0}
                 >
                   {nymList.map((nym) => (
                     <option key={nym.id} value={nym.id}>
@@ -311,10 +311,12 @@ export const ArcsView = () => {
                   className={styles.directRequestButton}
                   onClick={handleDirectResponseRequest}
                   disabled={
-                    isRequestingNym || !selectedNymId || !activeArc || nymList.length === 0
+                    !selectedNymId || !activeArc || nymList.length === 0
                   }
                 >
-                  {isRequestingNym ? 'Requesting…' : 'Send request'}
+                  {pendingDirectRequests > 0
+                    ? `Requesting (${pendingDirectRequests})…`
+                    : 'Send request'}
                 </button>
               </div>
               {requestError ? (

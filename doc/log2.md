@@ -1,4 +1,228 @@
+## 2025-11-30
+### Scheduler fixes
+- automatic scheduling and sending of messages works
+- only user messages get automatic responses (other messages never trigger queue events)
+- conversations feel a bit stilted
+- system prompts are not good
+
+## 2025-11-29
+### Flags
+Added a tiny feature-flag helper that centralizes all boolean dev toggles in one place (web/src/lib/devtools/feature-
+  flags.ts:1). Flags load once from localStorage, persist automatically, and the window.symposiumFlags object exposes getters/
+  setters for every flag that exists in defaultFlags so adding future toggles only requires adding to that single object. A
+  legacy-style alias window.__symposiumUseStubbedLLMs was kept for quick boolean flipping.
+  - Bootstrapped the helper before React renders so the stored values are ready application-wide (web/src/main.tsx:1).
+  - executeChatCompletion now checks the general flag store (getFeatureFlag('stubLLM')) instead of bespoke logic and falls back
+  to stubbed text when requested (web/src/lib/openrouter/executor.ts:1).
+  - Declared the new globals for TS awareness (web/src/types/globals.d.ts:1).
+
+  Usage: in the browser console run window.symposiumFlags.stubLLM = true (or false) to toggle real LLM calls, or flip
+  window.__symposiumUseStubbedLLMs.
+
+  Testing: npm run typecheck.
+
+  Next step idea:
+
+  1. Start the dev server, switch window.symposiumFlags.stubLLM between true/false, and confirm OpenRouter requests pause/
+  resume without logging out.
+
+> give me an example of all the places I would need to change to introduce a new flag
+
+To add another flag, you only touch three places:
+
+  - web/src/lib/devtools/feature-flags.ts:3-8 – append the flag name to the FeatureFlag union and add its default value inside
+  defaultFlags. The helper reads that object, so no other runtime wiring is needed.
+  - Wherever the app should read the flag, import getFeatureFlag('yourFlag') (or setFeatureFlag if the UI needs to flip it) the
+  same way the executor now does in web/src/lib/openrouter/executor.ts:1.
+  - If TypeScript needs to see the flag on window.symposiumFlags, nothing extra—globals.d.ts references FeatureFlags, so the
+  new property appears automatically.
+
+  Once those two code edits are made, window.symposiumFlags.yourFlag becomes available in the console, persists via
+  localStorage, and can be consumed anywhere via getFeatureFlag.
+
+
+## 2025-11-25
+### First release!
+- Searched the built bundle in web/dist/ for anything resembling common API keys (patterns like sk-, Bearer , accessToken,
+  refreshToken, OPENROUTER, odcoda). The only hits (web/dist/assets/index-Dyuemjn9.js:1) are generic status/error strings for
+  runtime logic—there are no actual credential values embedded.
+  - Tokens are still acquired at runtime via the OpenRouter store. The production bundle only contains references to
+  openRouterEnv (see web/src/lib/env.ts:23-36), which read from import.meta.env.* at build time. Because we never set sensitive
+  env vars (only OAuth client ID/redirects), nothing secret was inlined.
+  - Reminder: if you ever added real secrets to VITE_* env vars they would be baked into dist/, so keep private keys on the
+  server side only.
+
 ## 2025-11-24
+### Deploying the app
+#### Planning for github pages
+> how can I host this application on github pages? I have a separate <user>.github.io repo already but I'm not sure how to
+> actually get this code hosted there
+
+You already have the right target: a <user>.github.io repo. To host this Vite app on that site:
+
+  1. Build the static bundle locally. Inside symposium/web, run npm install (if needed) and then npm run build. That creates a
+  dist/ directory containing static HTML/CSS/JS.
+  2. Copy the build output into your GitHub Pages repo.
+      - In symposium/web/vite.config.ts, make sure base: '/' (or base: '') so paths work at the root.
+      - Delete any old contents of <user>.github.io (except .git), then copy everything from symposium/web/dist/ into that
+  repo’s root. The simplest approach is rsync -a web/dist/ <path-to-user.github.io>/.
+      - Commit and push from the <user>.github.io repo:
+
+        git add .
+        git commit -m "Deploy Symposium build"
+        git push origin main
+  3. Optional automation:
+      - Add a script to symposium/web/package.json like "deploy": "npm run build && cp -R dist/* ../<user>.github.io/".
+      - Or create a GitHub Action in this repo that builds on push to main, then commits the /dist contents to your Pages repo
+  via a personal access token.
+  4. Verify. Once the push completes, visit https://<user>.github.io/—GitHub Pages should serve the new build within a minute.
+
+  That’s all you need; GitHub Pages only cares about static files, so the built dist/ tree is exactly what it needs.
+
+> I don't want it in the repo root, but at a specific sub-page that I'm linking to. my github pages already exists and is built
+> with jekyll
+
+To serve this Vite build inside an existing Jekyll site (e.g. at https://<user>.github.io/symposium/) you just need to build
+  the app with the right base path and drop the dist output into a subfolder that Jekyll doesn’t touch.
+
+  Steps:
+
+  1. Set Vite’s base path for the subpage.
+     In symposium/web/vite.config.ts, set base: '/symposium/' (replace symposium with whatever URL segment you plan to use).
+  This tells Vite to prepend that prefix to all asset URLs so they resolve correctly when hosted under a subdirectory.
+  2. Build the app.
+     From symposium/web run:
+
+     npm install        # if you haven’t yet
+     npm run build      # honors the base you just set
+
+     You’ll get a web/dist/ folder with the static files.
+  3. Copy the build into your Jekyll repo.
+     In your <user>.github.io repo, create a folder matching the URL segment (e.g. /symposium/). Copy everything from web/dist/
+  into that folder—dist/index.html becomes <jekyll-root>/symposium/index.html, dist/assets/... becomes <jekyll-root>/symposium/
+  assets/..., etc. Jekyll will copy any folder without front matter straight through to the output site.
+  4. Commit and push the Jekyll repo.
+
+     git add symposium
+     git commit -m "Add Symposium build"
+     git push origin main   # or whatever branch publishes your site
+
+     When GitHub Pages rebuilds the Jekyll site, it will include the static bundle at https://<user>.github.io/symposium/.
+  5. Link to the subpage.
+     Anywhere in your Jekyll layouts/posts, link to /symposium/. Because the Vite bundle was built with base: '/symposium/',
+  all relative asset URLs will work.
+
+  If you change the folder name later, remember to update the base setting and rebuild before copying the files again.
+
+#### Deploy Workflow
+
+  - web/vite.config.ts:8-15 now pins base: '/symposium/' so every built asset assumes it will live at /symposium/ under your
+  Jekyll site instead of the root.
+  - Added web/scripts/deploy.mjs which verifies ../odcoda.github.io exists, runs npm run build, and copies the fresh dist/
+  output into ../odcoda.github.io/symposium. It hard-codes your username (odcoda) per the request.
+  - Hooked the script up via npm run deploy in web/package.json:7-18; running it from web/ will produce the build and sync it
+  to the Pages repo, after which you can commit/push from ../odcoda.github.io.
+
+  Run npm run deploy, then from ../odcoda.github.io run git status, commit the updated symposium/ folder, and push to publish.
+
+> if every built asset makes this assumption, will the site still work in dev mode on the same localhost url?
+
+> Yes. Vite ignores the base option when you run npm run dev; the dev server always serves from / and rewrites asset URLs
+  dynamically. The base: '/symposium/' setting only affects the contents of the built dist/ files. So local HMR at http://
+  localhost:5173/ keeps working exactly as before, while production builds resolve assets under /symposium/.
+
+
+### Streaming flow
+#### Implementation
+Streaming + UI Updates
+
+  - executeChatCompletion now drives OpenRouter’s SSE stream: streamChatCompletion was added to the client, chunks are decoded
+  as they arrive, and onContentChunk fires per chunk so the UI updates live (web/src/lib/openrouter/{client,executor}.ts).
+  Stubbed responses still emit a fake chunk for dev mode.
+  - Scheduler changes: each queued request now spawns a placeholder assistant message with status: 'streaming', chunk callbacks
+  append to it, and completion/failure flips status + removes the queue item. Request metadata now tracks responseMsgId so
+  errors can mark the right message (web/src/types/app.ts, web/src/stores/app-store.ts, web/src/components/ArcScheduler.tsx).
+  - Direct “Request response” controls no longer block while a reply streams; you can fire multiple manual requests and see a
+  count of in-flight ones (web/src/components/ArcsView.tsx).
+  - Auth tweaks: token mapping now handles the actual { key, user_id } payload from OpenRouter, and refresh attempts throw
+  immediately (web/src/lib/openrouter/auth.ts, web/src/types/openrouter.ts).
+  - Misc: added buffer dependency for PKCE encoding, tightened useOpenRouterClient deps, and allowed PreMsg to carry nymId.
+
+  Validation
+
+  - npm run lint
+  - npm run typecheck
+  - npm run test
+  - npm run build
+
+  (Tried to capture a new Playwright screenshot, but launching Chromium is blocked in the current sandbox, so no fresh artifact
+  was produced. You can preview locally via npm run preview -- --host 127.0.0.1 --port 4173.)
+
+  Next Steps
+
+  1. Authenticate and try a conversation: you should see assistant replies stream word-by-word.
+  2. Fire multiple manual “Request response” actions—the button stays enabled and counts concurrent requests.
+  3. If you need an updated screenshot, run the preview + node scripts/capture-preview.mjs … locally since Playwright can’t
+  launch here.
+
+#### Planning
+> currently my responses don't stream back; the application seems to just wait for a full response to be received. Can you talk
+> me through the current flow that happens after we send a request, to receive it and populate it in the ui? what would we need
+> to change to be able to stream replies? I would also like the ui to be fully capable while the response is streaming back.
+> currently I see the ui is (correctly) not locked up so I can send more messages, however the "request response" button is
+> greyed out so I can't request another message simultaneously
+
+Here’s the flow today:
+
+  1. Queueing: When you press “Send” (or “Request Response”), the composer calls appendMsg to add the user’s message, then
+  enqueues one RequestQueueItem per auto-responding nym via queueRequest.
+  2. Scheduler loop: ArcScheduler subscribes to the store slices (queue, inFlightIds, settings, nym states). Each time those
+  slices change, its useEffect (lines 109–151) recomputes how many slots are free (deriveAvailableSlots) and selects which
+  queued requests should launch next (selectRequestsForSlots). For each request, it calls startRequest.
+  3. Starting a request: Inside startRequest (lines 49–103):
+      - marks the queue item in-flight / markMsgStreaming,
+      - builds the prompt by pulling all messages up to the cited message (buildPromptMsgs),
+      - prepares the OpenRouter request body (system prompt + chat history),
+      - calls executeChatCompletion.
+  4. Execution: executeChatCompletion (web/src/lib/openrouter/executor.ts) is currently a simple async helper: if no auth
+  client, it waits 800 ms and emits a stub chunk; otherwise it calls client.createChatCompletion, awaits the whole JSON
+  response, then calls onContentChunk once with the full message. There’s no streaming or partial UI updates—just a single
+  callback when the request resolves.
+  5. Completing: After executeChatCompletion returns, startRequest calls appendNymMsg, which creates a new assistant message
+  with the final text and marks the original user message complete, then removes the queue item. At that point inFlightIds
+  shrinks, so ArcScheduler’s effect runs again and may launch another request.
+
+  That’s why you see the UI idle until the entire response finishes: the executor feeds the scheduler only one chunk.
+
+Streaming changes needed
+
+  - OpenRouter client: Use the streaming endpoint (OpenRouter supports SSE / chunked responses when you set stream: true).
+  The client would need to call fetch with { signal, body, headers } and then iterate over response.body as a ReadableStream,
+  decoding each chunk.
+  - Executor: Instead of waiting for response.json(), parse the SSE stream and invoke onContentChunk whenever a chunk arrives.
+  Accumulate the text so the final result still has the full message, but call the callback after every chunk so the UI
+  can update incrementally. For models that emit “reasoning” tokens, you could add another callback (onReasoningChunk). The
+  executor should resolve only when the stream closes or aborts.
+  - Store/UI updates: Right now appendNymMsg is only called once at the end. To show streaming text, you’d:
+      1. Insert a placeholder message (status streaming, empty content) when the request starts.
+      2. In each onContentChunk, call updateMsg to append the new chunk to that placeholder’s content.
+      3. When the stream completes, flip the status to complete and optionally store metadata.
+
+    The scheduler already calls markMsgStreaming(request.msgId) for the user message; you’d need a similar placeholder for the
+  assistant reply (maybe “active message id” stored alongside the queue item).
+  - Concurrency button: The “Request Response” button is disabled because the store marks the queue item in-flight until the
+  request finishes; the composer probably checks scheduler.inFlightIds or the queue status to avoid duplicate requests (look
+  for a disabled={something === 'authorizing'} pattern in the composer). To allow multiple simultaneous requests you can:
+      - Keep the button disabled only while its specific request is queued, but allow new user messages regardless of existing
+  in-flight ones.
+      - Respect settings.maxConcurrent in the scheduler (already does) but don’t block the composer—just queue the new request
+  even if it can’t start yet.
+
+  In short: the scheduler already lets multiple requests run (up to maxConcurrent), but the UI disables the “request response”
+  button as soon as the message is sent. If you want that button usable even while earlier responses stream, change the
+  composer’s disabled condition to ignore queue/in-flight state (or only disable while the text area is empty). Streaming
+  requires changes in executeChatCompletion and the scheduler to process chunks and update the target message progressively.
+
 ### Manual fixes
 - auth expiration isn't checked to avoid the bug where it always thinks it expired (because null <= (any Date.now()) by numerical conversion)
 - added some free models -- it works now!

@@ -45,8 +45,6 @@ const DEFAULT_NYM_SETTINGS: Omit<PreNym, 'name' | 'color'> = {
 
 const pickColor = (index: number) => COLOR_OPTIONS[index % COLOR_OPTIONS.length]
 
-const formatPercent = (value: number, max = 1) => `${Math.round((value / max) * 100)}%`
-
 const NymCard = ({ nym }: { nym: Nym }) => {
   const { updateNym, deleteNym } = useAppStore((state) => state.actions)
 
@@ -124,14 +122,14 @@ const NymCard = ({ nym }: { nym: Nym }) => {
 
       <div className={styles.fieldGroup}>
         <label className={styles.fieldLabel} htmlFor={`temperature-${nym.id}`}>
-          Creativity {formatPercent(nym.temperature, 2)}
+          Temperature: {nym.temperature}
         </label>
         <input
           id={`temperature-${nym.id}`}
           type="range"
           min={0}
           max={2}
-          step={0.1}
+          step={0.01}
           value={nym.temperature}
           onChange={(event) => handleSliderChange(event, 'temperature')}
           className={styles.rangeInput}
@@ -144,14 +142,14 @@ const NymCard = ({ nym }: { nym: Nym }) => {
 
       <div className={styles.fieldGroup}>
         <label className={styles.fieldLabel} htmlFor={`eagerness-${nym.id}`}>
-          Participation {formatPercent(nym.eagerness)}
+          Eagerness to participate: {nym.eagerness}
         </label>
         <input
           id={`eagerness-${nym.id}`}
           type="range"
           min={0}
           max={1}
-          step={0.05}
+          step={0.01}
           value={nym.eagerness}
           onChange={(event) => handleSliderChange(event, 'eagerness')}
           className={styles.rangeInput}

@@ -9,11 +9,8 @@ export interface OpenRouterTokens {
 }
 
 export interface OpenRouterTokenResponse {
-  access_token: string
-  refresh_token?: string
-  expires_in: number
-  token_type: OpenRouterTokenType
-  scope?: string
+  key: string
+  user_id?: string
 }
 
 export interface PkceSession {

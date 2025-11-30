@@ -134,7 +134,6 @@ export type SchedulerSettings = {
   responseDelayMs: number
   responsePacing: ResponsePacing
   autoStart: boolean
-  triggerMode: 'quiet' | 'medium' | 'active'
   selectionTemperature: number
   politenessDecayMultiplier: number
 }
@@ -146,6 +145,7 @@ export type SchedulerRequest = {
   arcId: string
   authorId: string
   msgId: string
+  responseMsgId?: string
   enqueuedAt: number
   status: RequestStatus
   error?: string
@@ -164,6 +164,7 @@ export type PreMsg = {
   authorRole: Role
   content: string
   status: MsgStatus
+  nymId?: string
 }
 
 export type PreNym = {

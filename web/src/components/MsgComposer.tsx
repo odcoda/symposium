@@ -39,11 +39,13 @@ export const MsgComposer = ({ arcId }: MsgComposerProps) => {
     console.log('new msg', msg)
 
     if (msgId && arc) {
-      queueRequest({
+      const req = {
         arcId,
         authorId,
         msgId,
-      })
+      }
+      console.log('[composer] queueing request ', req)
+      queueRequest(req)
     }
 
     setContent('')

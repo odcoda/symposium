@@ -21,7 +21,6 @@ import { resolveStorage } from '@/utils/storage'
 const STORE_KEY = 'symposium-app-state'
 const STORE_VERSION = 2
 
-const DEFAULT_TRIGGER_MODE: SchedulerSettings['triggerMode'] = 'medium'
 const DEFAULT_SELECTION_TEMPERATURE = 1
 const DEFAULT_POLITENESS_DECAY = 0.8
 
@@ -153,6 +152,7 @@ type AppActions = {
   // scheduler
   updateSchedulerSettings: (settings: Partial<SchedulerSettings>) => void
   createSchedulerRequest: (input: PreSchedulerRequest) => string
+  updateSchedulerQueue: (queue: SchedulerRequest[]) => void
   updateSchedulerRequest: (requestId: string, updates: Partial<SchedulerRequest>) => void
   deleteSchedulerRequest: (requestId: string) => void
 }
@@ -191,24 +191,12 @@ const createInitialState = (): BaseState => {
   }
 
   const defaultArcId = 'arc-welcome'
-  const defaultMsgId = 'msg-welcome'
-
-  const defaultMsg: Msg = {
-    id: defaultMsgId,
-    arcId: defaultArcId,
-    authorId: defaultNym.id,
-    authorRole: 'assistant',
-    content: 'Welcome to Symposium! Start an arc or customise nyms to get going.',
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    status: 'complete',
-  }
 
   const defaultArc: Arc = {
     id: defaultArcId,
     title: 'Welcome Chat',
     participantIds: ['user', defaultNym.id],
-    msgIds: [defaultMsgId],
+    msgIds: [],
     activeNymIds: [defaultNym.id],
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -221,9 +209,7 @@ const createInitialState = (): BaseState => {
     arcs: {
       [defaultArc.id]: defaultArc,
     },
-    msgs: {
-      [defaultMsg.id]: defaultMsg,
-    },
+    msgs: {},
     activeArcId: defaultArc.id,
     scheduler: {
       settings: {
@@ -231,7 +217,6 @@ const createInitialState = (): BaseState => {
         responseDelayMs: 1200,
         responsePacing: 'steady',
         autoStart: false,
-        triggerMode: DEFAULT_TRIGGER_MODE,
         selectionTemperature: DEFAULT_SELECTION_TEMPERATURE,
         politenessDecayMultiplier: DEFAULT_POLITENESS_DECAY,
       },
@@ -560,29 +545,30 @@ export const useAppStore = create<AppState>()(
               false,
               'scheduler/updateSettings',
             ),
-          createSchedulerRequest: (input) => {
-            const id = createId()
-            const enqueuedAt = Date.now()
-            const status = 'queued'
-            const error = ''
+        createSchedulerRequest: (input) => {
+          const id = createId()
+          const enqueuedAt = Date.now()
+          const status = 'queued'
+          const error = ''
 
-            set(
-              (state) => ({
-                scheduler: {
-                  ...state.scheduler,
-                  queue: [
-                    ...state.scheduler.queue,
-                    {
-                      id,
-                      arcId: input.arcId,
-                      authorId: input.authorId,
-                      msgId: input.msgId,
-                      enqueuedAt,
-                      status,
-                      error,
-                    },
-                  ],
-                },
+          set(
+            (state) => ({
+              scheduler: {
+                ...state.scheduler,
+                queue: [
+                  ...state.scheduler.queue,
+                  {
+                    id,
+                    arcId: input.arcId,
+                    authorId: input.authorId,
+                    msgId: input.msgId,
+                    responseMsgId: undefined,
+                    enqueuedAt,
+                    status,
+                    error,
+                  },
+                ],
+              },
               }),
               false,
               'scheduler/queueRequest',
@@ -590,6 +576,17 @@ export const useAppStore = create<AppState>()(
 
             return id
           },
+          updateSchedulerQueue: (newQueue) =>
+            set(
+              (state) => ({
+                scheduler: {
+                  ...state.scheduler,
+                  queue: newQueue,
+                },
+              }),
+              false,
+              'scheduler/updateSchedulerQueue',
+            ),
           updateSchedulerRequest: (requestId, updates) =>
             set(
               (state) => ({
