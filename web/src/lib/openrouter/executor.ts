@@ -2,6 +2,7 @@ import { getFeatureFlag } from '@/lib/devtools/feature-flags'
 import type {
   OpenRouterChatCompletionRequest,
   OpenRouterChatCompletionResponse,
+  OpenRouterGeneration,
 } from '@/types'
 
 import type { OpenRouterClient } from './client'
@@ -160,4 +161,33 @@ export const executeChatCompletion = async ({
     response: finalResponse,
     content: combinedContent,
   }
+}
+
+interface FetchGenerationOptions {
+  maxAttempts?: number
+  delayMs?: number
+}
+
+export const fetchGenerationWithRetry = async (
+  client: OpenRouterClient,
+  completionId: string,
+  options?: FetchGenerationOptions,
+): Promise<OpenRouterGeneration | null> => {
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? 2)
+  const delayMs = options?.delayMs ?? 1000
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const generation = await client.getGeneration(completionId)
+      return generation
+    } catch (error) {
+      if (attempt >= maxAttempts) {
+        console.error('Failed to fetch OpenRouter generation metadata', error)
+        break
+      }
+      await sleep(delayMs)
+    }
+  }
+
+  return null
 }

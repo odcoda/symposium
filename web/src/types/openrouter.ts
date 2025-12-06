@@ -33,6 +33,47 @@ export interface OpenRouterModelListResponse {
   data: OpenRouterModel[]
 }
 
+export type OpenRouterGeneration =
+  & {
+    id: string
+    upstream_id?: string
+    total_cost?: number
+    cache_discount?: number
+    upstream_inference_cost?: number
+    created_at?: string
+    model?: string
+    app_id?: number
+    streamed?: boolean
+    cancelled?: boolean
+    provider_name?: string
+    latency?: number
+    moderation_latency?: number
+    generation_time?: number
+    finish_reason?: string
+    tokens_prompt?: number
+    tokens_completion?: number
+    native_tokens_prompt?: number
+    native_tokens_completion?: number
+    native_tokens_completion_images?: number
+    native_tokens_reasoning?: number
+    native_tokens_cached?: number
+    num_media_prompt?: number
+    num_input_audio_prompt?: number
+    num_media_completion?: number
+    num_search_results?: number
+    origin?: string
+    usage?: number
+    is_byok?: boolean
+    native_finish_reason?: string
+    external_user?: string
+    api_type?: string
+  }
+  & Record<string, unknown>
+
+export interface OpenRouterGenerationResponse {
+  data: OpenRouterGeneration
+}
+
 export type OpenRouterChatRole = 'system' | 'user' | 'assistant'
 
 export interface OpenRouterChatMsg {

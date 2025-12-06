@@ -1,3 +1,5 @@
+import type { OpenRouterGeneration } from './openrouter'
+
 export type AppView = 'arcs' | 'nyms'
 
 /*
@@ -49,7 +51,7 @@ export type Msg = {
   status: MsgStatus
   statusDetails?: string
   chunks?: Record<string, unknown>[]
-  generation?: Record<string, unknown>
+  generation?: OpenRouterGeneration
   debug?: string
 }
 

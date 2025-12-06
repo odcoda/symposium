@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 
 import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
-import { executeChatCompletion } from '@/lib/openrouter/executor'
+import { executeChatCompletion, fetchGenerationWithRetry } from '@/lib/openrouter/executor'
 import { scheduleNyms } from '@/lib/scheduler'
 import { useAppStore } from '@/stores/app-store'
 import type {
@@ -50,13 +50,18 @@ const failRequest = (request: SchedulerRequest, error: string, responseMsgId?: s
       statusDetails: error,
       updatedAt: timestamp,
     })
+    updateMsg(request.msgId, {
+      status: 'complete',
+      statusDetails: undefined,
+      updatedAt: timestamp,
+    })
+  } else {
+    updateMsg(request.msgId, {
+      status: 'error',
+      statusDetails: error,
+      updatedAt: timestamp,
+    })
   }
-
-  updateMsg(request.msgId, {
-    status: 'error',
-    statusDetails: error,
-    updatedAt: timestamp,
-  })
   updateQueueItem(request.id, { status: 'error', error })
   removeQueueItem(request.id)
 }
@@ -75,6 +80,7 @@ export const ArcScheduler = () => {
 
   const startRequest = useCallback(
     async (request: SchedulerRequest) => {
+      let responseMsgId = request.responseMsgId ?? null
       try {
         console.log("[scheduler] handling request: ", request)
         activeRequests.current.add(request.id)
@@ -134,7 +140,6 @@ export const ArcScheduler = () => {
         }
 
         const actions = useAppStore.getState().actions
-        let responseMsgId = request.responseMsgId ?? null
         if (!responseMsgId) {
           responseMsgId = actions.createMsg({
             arcId: request.arcId,
@@ -154,7 +159,7 @@ export const ArcScheduler = () => {
         }
 
         let assembledContent = ''
-        await executeChatCompletion({
+        const completion = await executeChatCompletion({
           client: openRouterClient,
           request: requestBody,
           onContentChunk: (chunk) => {
@@ -180,6 +185,22 @@ export const ArcScheduler = () => {
             statusDetails: undefined,
             updatedAt: new Date().toISOString(),
           })
+
+          if (completion.response?.id && openRouterClient) {
+            const responseId = completion.response.id
+            void (async () => {
+              const generation = await fetchGenerationWithRetry(
+                openRouterClient,
+                responseId,
+              )
+              if (generation) {
+                actions.updateMsg(responseMsgId, {
+                  generation,
+                  updatedAt: new Date().toISOString(),
+                })
+              }
+            })()
+          }
         }
 
         actions.updateMsg(request.msgId, {
@@ -193,7 +214,8 @@ export const ArcScheduler = () => {
         const queueItem = useAppStore
           .getState()
           .scheduler.queue.find((item) => item.id === request.id)
-        const fallbackResponseId = queueItem?.responseMsgId ?? request.responseMsgId ?? null
+        const fallbackResponseId =
+          responseMsgId ?? queueItem?.responseMsgId ?? request.responseMsgId ?? null
         failRequest(request, message, fallbackResponseId)
       } finally {
         activeRequests.current.delete(request.id)

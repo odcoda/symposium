@@ -1,10 +1,81 @@
+## 2025-12-06
+### Manual testing
+- paid models and messages work
+- token and cost counting works (checked against openrouter)
+- conversation rendering is really weird right now
+
+### Error bug fix
+  - Scheduler now restores the user message to complete and clears its error details whenever a response placeholder exists,
+  keeping the error banner on the assistant reply only (web/src/components/ArcScheduler.tsx:38-66).
+  - startRequest tracks the responseMsgId outside the try/catch, so when a request fails after the queue entry disappears the
+  catch block still knows which assistant message to annotate (web/src/components/ArcScheduler.tsx:83-219). This fixes the root
+  cause where the fallback lookup returned null, forcing failRequest to mark the original user message as errored.
+
+### Generation info (tokens and cost)
+#### Async request
+- Generation metadata is now fetched in the background after a completion finishes streaming. executeChatCompletion just
+  returns the streamed response/content, and the new fetchGenerationWithRetry helper (web/src/lib/openrouter/executor.ts:21-
+  193) retries the /generation call once after a 1 s pause before giving up, logging failures but not blocking the UI.
+  - Direct responses trigger that helper asynchronously once the completion id is available; when the metadata finally arrives
+  we patch the stored message with the token/cost info so the UI refreshes automatically (web/src/components/ArcsView.tsx:232-
+  274). The effect is entirely fire‑and‑forget, so the button/UI become responsive as soon as the text is written.
+  - Scheduler-driven auto replies follow the same pattern—message completion happens immediately, and the retry helper updates
+  the message later if stats come through (web/src/components/ArcScheduler.tsx:156-199).
+  - Restored the OpenRouter client to its previous fetch behavior (no explicit credentials: 'omit') so it behaves like the
+  console test that worked for you (web/src/lib/openrouter/client.ts:67-125).
+
+
+#### Debugging
+  - Open DevTools → Network tab, make sure “Preserve log” is on if the request only fires once.
+  - Trigger the failing action once so the request shows up, then find it in the list.
+  - Right‑click the row and pick Replay XHR (or Replay fetch in newer Chrome); DevTools will resend the exact request with the
+  same headers/body so you can immediately inspect the new response.
+  - If you want to modify anything before retrying, choose Copy → Copy as fetch, paste into the Console, tweak, and run—it’ll
+  execute in the page context with the same cookies/auth.
+
+In Chrome, right-click the request, then "Copy as fetch", paste into the console, and retry.
+- take out the "priority"
+- change credentials to "omit"
+
+Example request:
+```
+fetch("https://openrouter.ai/api/v1/generation?id=gen-1765034883-0qREU60EIK6kbgssBwgR", {
+  "headers": {
+    "accept": "application/json",
+    "accept-language": "en-US,en;q=0.9",
+    "authorization": "Bearer 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",
+    "content-type": "application/json",
+    "sec-ch-ua": "\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"macOS\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "cross-site"
+  },
+  "referrer": "http://localhost:5173/",
+  "body": null,
+  "method": "GET",
+  "mode": "cors",
+  "credentials": "omit"
+});
+```
+#### Basic version
+- web/src/components/ArcsView.tsx:124-330 now memoizes each arc’s cumulative cost by summing the per-message generation
+  charges we already capture, and the header renders a “Total cost” badge formatted with the existing helper.
+  - web/src/components/ArcsView.module.css:106-138 adds layout/styling for the new header structure so the title, participant
+  summary, and badge stay tidy.
+
+
+### Fix the broken test
+- Updated the arc scheduler test to mock sampleIndexFromLogits, drive scheduleNyms, and assert both the logits/probabilities
+  and the deterministic nym selections as messages land (web/src/test/arc-scheduler.test.ts:11).
+
 ## 2025-12-??
 ### Improve mobile responsiveness and controls layout
 - Keep the arcs list visible on narrow screens and adjust navigation spacing by hiding the brand label on small viewports
 - Convert the settings button to a gear icon with accessible labeling
 - Reflow OpenRouter auth controls and status banner for small screens to prevent overflow
 
-## 2025-12-??
 ### Model selector UI changes
   - Nym cards now keep per-model validation state, call the OpenRouter client via getOpenRouterModelIds, and reset
   messaging whenever the model changes so we can highlight the text field green/red only after a check (web/src/components/

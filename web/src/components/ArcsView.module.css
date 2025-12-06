@@ -112,7 +112,13 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.arcHeader h2 {
+.arcHeaderDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.arcHeaderDetails h2 {
   margin: 0;
   font-size: 1.1rem;
 }
@@ -120,6 +126,15 @@
 .metadata {
   font-size: 0.85rem;
   opacity: 0.75;
+}
+
+.arcCostBadge {
+  font-size: 0.8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  background: var(--surface-highlight);
+  color: var(--text-muted);
 }
 
 .arcBody {
@@ -221,6 +236,12 @@
   border: 1px solid var(--border-subtle);
   background: var(--surface-highlight);
   align-self: flex-start;
+}
+
+.msgGenerationMeta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 
 .msgStatusError {

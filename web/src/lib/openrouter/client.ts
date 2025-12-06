@@ -3,6 +3,7 @@ import type {
   OpenRouterChatCompletionRequest,
   OpenRouterChatCompletionResponse,
   OpenRouterModelListResponse,
+  OpenRouterGenerationResponse,
   OpenRouterTokens,
 } from '@/types'
 
@@ -114,6 +115,14 @@ export class OpenRouterClient {
     }
 
     return response
+  }
+
+  async getGeneration(id: string) {
+    const params = new URLSearchParams({ id })
+    const response = await this.request<OpenRouterGenerationResponse>(
+      `/generation?${params.toString()}`,
+    )
+    return response.data
   }
 }
 

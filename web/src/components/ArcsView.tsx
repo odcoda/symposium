@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
-import { executeChatCompletion } from '@/lib/openrouter/executor'
+import { executeChatCompletion, fetchGenerationWithRetry } from '@/lib/openrouter/executor'
 import { useAppStore } from '@/stores/app-store'
 import type {
   Arc,
@@ -26,6 +26,58 @@ const formatTimestamp = (iso: string) => {
     month: 'short',
     day: 'numeric',
   })
+}
+
+const sumTokens = (...values: Array<number | undefined>) =>
+  values.reduce((total, value) => (typeof value === 'number' ? total + value : total), 0)
+
+const getTokenCount = (generation?: Msg['generation']) => {
+  if (!generation) {
+    return null
+  }
+
+  const nativeCount = sumTokens(
+    generation.native_tokens_prompt,
+    generation.native_tokens_completion,
+    generation.native_tokens_reasoning,
+    generation.native_tokens_completion_images,
+  )
+  if (nativeCount > 0) {
+    return Math.round(nativeCount)
+  }
+
+  const fallbackCount = sumTokens(generation.tokens_prompt, generation.tokens_completion)
+  return fallbackCount > 0 ? Math.round(fallbackCount) : null
+}
+
+const getGenerationCost = (generation?: Msg['generation']) => {
+  if (!generation) {
+    return null
+  }
+
+  if (typeof generation.total_cost === 'number') {
+    return generation.total_cost
+  }
+
+  if (typeof generation.usage === 'number') {
+    return generation.usage
+  }
+
+  if (typeof generation.upstream_inference_cost === 'number') {
+    return generation.upstream_inference_cost
+  }
+
+  return null
+}
+
+const formatCost = (cost: number) => {
+  if (cost >= 1) {
+    return cost.toFixed(2)
+  }
+  if (cost >= 0.01) {
+    return cost.toFixed(3)
+  }
+  return cost.toFixed(4)
 }
 
 const getAuthorName = (
@@ -90,6 +142,17 @@ export const ArcsView = () => {
       .map((id) => msgs[id])
       .filter((msg): msg is Msg => Boolean(msg))
   }, [activeArc, msgs])
+
+  const activeArcCost = useMemo(() => {
+    if (!activeArc) {
+      return null
+    }
+    const total = activeMsgs.reduce((sum, msg) => {
+      const cost = getGenerationCost(msg.generation)
+      return typeof cost === 'number' ? sum + cost : sum
+    }, 0)
+    return total > 0 ? total : 0
+  }, [activeArc, activeMsgs])
 
   useEffect(() => {
     setSelectedNymId((current) => {
@@ -176,7 +239,7 @@ export const ArcsView = () => {
 
     let assembledContent = ''
     try {
-      await executeChatCompletion({
+      const completion = await executeChatCompletion({
         client: openRouterClient,
         request: requestBody,
         onContentChunk: (chunk) => {
@@ -196,6 +259,19 @@ export const ArcsView = () => {
         updatedAt: new Date().toISOString(),
         statusDetails: undefined,
       })
+
+      if (completion.response?.id && openRouterClient) {
+        const responseId = completion.response.id
+        void (async () => {
+          const generation = await fetchGenerationWithRetry(openRouterClient, responseId)
+          if (generation) {
+            updateMsg(placeholderMsgId, {
+              generation,
+              updatedAt: new Date().toISOString(),
+            })
+          }
+        })()
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Direct request failed'
@@ -252,21 +328,34 @@ export const ArcsView = () => {
         {activeArc ? (
           <>
             <div className={styles.arcHeader}>
-              <h2>{activeArc.title}</h2>
-              <span className={styles.metadata}>
-                {summariseParticipants(activeArc, nyms)}
-              </span>
+              <div className={styles.arcHeaderDetails}>
+                <h2>{activeArc.title}</h2>
+                <span className={styles.metadata}>
+                  {summariseParticipants(activeArc, nyms)}
+                </span>
+              </div>
+              {activeArcCost !== null ? (
+                <div className={styles.arcCostBadge}>
+                  Total cost · ${formatCost(activeArcCost)}
+                </div>
+              ) : null}
             </div>
             <div className={styles.arcBody}>
               <div className={styles.msgs}>
-                {activeMsgs.map((msg) => (
-                  <article key={msg.id} className={styles.msgCard}>
-                    <header className={styles.msgHeader}>
-                      <div className={styles.msgHeaderMeta}>
-                        <span className={styles.msgAuthor}>
-                          {getAuthorName(msg, nyms)}
-                        </span>
-                        <span className={styles.msgTimestamp}>{formatTimestamp(msg.createdAt)}</span>
+                {activeMsgs.map((msg) => {
+                  const tokenCount = getTokenCount(msg.generation)
+                  const costValue = getGenerationCost(msg.generation)
+                  const showGenerationMeta =
+                    tokenCount !== null || costValue !== null
+
+                  return (
+                    <article key={msg.id} className={styles.msgCard}>
+                      <header className={styles.msgHeader}>
+                        <div className={styles.msgHeaderMeta}>
+                          <span className={styles.msgAuthor}>
+                            {getAuthorName(msg, nyms)}
+                          </span>
+                          <span className={styles.msgTimestamp}>{formatTimestamp(msg.createdAt)}</span>
                       </div>
                       <button
                         type="button"
@@ -276,14 +365,22 @@ export const ArcsView = () => {
                       >
                         Delete
                       </button>
-                    </header>
-                    <p>{msg.content}</p>
-                    {msg.status === 'error' && msg.statusDetails ? (
-                      <div className={styles.msgStatusError}>{msg.statusDetails}</div>
-                    ) : null}
-                    <span className={styles.msgStatus}>{msg.status}</span>
-                  </article>
-                ))}
+                      </header>
+                      <p>{msg.content}</p>
+                      {showGenerationMeta ? (
+                        <div className={styles.msgGenerationMeta}>
+                          {tokenCount !== null ? `${tokenCount} tokens` : null}
+                          {tokenCount !== null && costValue !== null ? ' · ' : null}
+                          {costValue !== null ? `$${formatCost(costValue)}` : null}
+                        </div>
+                      ) : null}
+                      {msg.status === 'error' && msg.statusDetails ? (
+                        <div className={styles.msgStatusError}>{msg.statusDetails}</div>
+                      ) : null}
+                      <span className={styles.msgStatus}>{msg.status}</span>
+                    </article>
+                  )
+                })}
                 {activeMsgs.length === 0 ? (
                   <div className={styles.emptyState}>No messages yet. Start the arc!</div>
                 ) : null}

@@ -1,12 +1,27 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { calculateRequestLogits, logitsToProbabilities } from '@/lib/scheduler'
+import { logitsToProbabilities, scheduleNyms } from '@/lib/scheduler'
 import {
   applySchedulerMsgUpdate,
   createNymSchedulerState,
 } from '@/stores/app-store'
 import type { AppView, Msg, Nym, SchedulerRequest, SchedulerSettings } from '@/types'
 import type { NymSchedulerStateMap } from '@/types/scheduler'
+
+vi.mock('@/lib/scheduler/math', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/scheduler/math')>('@/lib/scheduler/math')
+  return {
+    ...actual,
+    sampleIndexFromLogits: (logits: number[]): number => {
+      if (!logits.length) {
+        return -1
+      }
+
+      const maxLogit = Math.max(...logits)
+      return logits.findIndex((logit) => logit === maxLogit)
+    },
+  }
+})
 
 describe('arc scheduling algorithm', () => {
   it('updates logits and probabilities as msgs arrive', () => {
@@ -49,21 +64,20 @@ describe('arc scheduling algorithm', () => {
       responseDelayMs: 0,
       responsePacing: 'steady',
       autoStart: true,
-      triggerMode: 'medium',
       selectionTemperature: 1,
       politenessDecayMultiplier: 0.8,
     }
 
-    const buildRequest = (authorId: string): SchedulerRequest => ({
-      id: `${authorId}-request`,
-      authorId,
-      arcId: 'arc',
-      msgId: `${authorId}-msg`,
-      enqueuedAt: 0,
-      status: 'queued',
-    })
-
-    const queuedRequests = [buildRequest('alpha'), buildRequest('beta')]
+    const createQueue = (): SchedulerRequest[] => [
+      {
+        id: 'user-request',
+        arcId: 'arc',
+        authorId: 'user',
+        msgId: 'user-msg',
+        enqueuedAt: 0,
+        status: 'queued',
+      },
+    ]
 
     const baseState = {
       nyms,
@@ -84,16 +98,24 @@ describe('arc scheduling algorithm', () => {
     }
 
     const recordStep = (state: typeof baseState) => {
-      const logits = calculateRequestLogits(
-        queuedRequests,
-        state.nyms,
-        state.scheduler.nymStates,
-      )
+      const logits = Object.keys(state.nyms).map((nymId) => {
+        const nym = state.nyms[nymId]
+        const nymState = state.scheduler.nymStates[nymId]
+        return nym.eagerness + nymState.mentionScore + nymState.politenessScore
+      })
       const probabilities = logitsToProbabilities(
         logits,
         state.scheduler.settings.selectionTemperature,
       )
-      return { logits, probabilities }
+      const { requests } = scheduleNyms({
+        queue: createQueue(),
+        nyms: state.nyms,
+        nymStates: state.scheduler.nymStates,
+        activeRequestIds: new Set(),
+        settings: state.scheduler.settings,
+      })
+
+      return { logits, probabilities, selection: requests[0]?.authorId ?? null }
     }
 
     const testMsgs: Array<Msg> = [
@@ -175,6 +197,11 @@ describe('arc scheduling algorithm', () => {
           9,
         )
       })
+    })
+
+    const expectedSelections = ['alpha', 'beta', 'beta', 'alpha', 'beta']
+    recorded.forEach(({ selection }, index) => {
+      expect(selection).toBe(expectedSelections[index])
     })
   })
 })
