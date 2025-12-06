@@ -1,11 +1,16 @@
 import type { ChangeEvent } from 'react'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useAppStore } from '@/stores/app-store'
 import type { Nym, PreNym } from '@/types'
+import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
+import { getOpenRouterModelIds } from '@/lib/openrouter/models'
 
 import styles from './NymsView.module.css'
+
+const classNames = (...values: Array<string | false | null | undefined>) =>
+  values.filter(Boolean).join(' ')
 
 const MODEL_OPTIONS = [
   'openrouter/auto',
@@ -47,6 +52,11 @@ const pickColor = (index: number) => COLOR_OPTIONS[index % COLOR_OPTIONS.length]
 
 const NymCard = ({ nym }: { nym: Nym }) => {
   const { updateNym, deleteNym } = useAppStore((state) => state.actions)
+  const client = useOpenRouterClient()
+  const [validationStatus, setValidationStatus] = useState<'idle' | 'pending' | 'valid' | 'invalid' | 'error'>(
+    'idle',
+  )
+  const [validationMessage, setValidationMessage] = useState<string | null>(null)
 
   const updateField = <K extends keyof Nym>(field: K, value: Nym[K]) => {
     updateNym(nym.id, { [field]: value })
@@ -62,6 +72,58 @@ const NymCard = ({ nym }: { nym: Nym }) => {
     }
     updateField(field, numericValue as Nym[typeof field])
   }
+
+  useEffect(() => {
+    setValidationStatus('idle')
+    setValidationMessage(null)
+  }, [nym.model])
+
+  const handleModelValidate = async () => {
+    const modelToValidate = nym.model.trim()
+
+    if (!modelToValidate) {
+      setValidationStatus('invalid')
+      setValidationMessage('Enter a model id to validate.')
+      return
+    }
+
+    if (!client) {
+      setValidationStatus('error')
+      setValidationMessage('Connect OpenRouter to validate models.')
+      return
+    }
+
+    setValidationStatus('pending')
+    setValidationMessage(null)
+
+    try {
+      const modelIds = await getOpenRouterModelIds(client)
+
+      if (nym.model.trim() !== modelToValidate) {
+        return
+      }
+
+      const isValid = modelIds.includes(modelToValidate)
+      setValidationStatus(isValid ? 'valid' : 'invalid')
+      setValidationMessage(
+        isValid ? 'Model available on OpenRouter.' : 'Model not found in OpenRouter catalog.',
+      )
+    } catch (error) {
+      if (nym.model.trim() !== modelToValidate) {
+        return
+      }
+
+      setValidationStatus('error')
+      setValidationMessage(error instanceof Error ? error.message : 'Unable to validate right now.')
+    }
+  }
+
+  const modelInputClassName = classNames(
+    styles.textInput,
+    styles.modelInput,
+    validationStatus === 'valid' && styles.modelInputValid,
+    (validationStatus === 'invalid' || validationStatus === 'error') && styles.modelInputInvalid,
+  )
 
   return (
     <article className={styles.card}>
@@ -93,8 +155,37 @@ const NymCard = ({ nym }: { nym: Nym }) => {
         <label className={styles.fieldLabel} htmlFor={`model-${nym.id}`}>
           Model
         </label>
+        <div className={styles.modelInputRow}>
+          <input
+            id={`model-${nym.id}`}
+            className={modelInputClassName}
+            value={nym.model}
+            onChange={(event) => updateField('model', event.target.value)}
+            placeholder="Enter any OpenRouter model"
+          />
+          <button
+            type="button"
+            className={styles.modelCheckButton}
+            onClick={handleModelValidate}
+            disabled={validationStatus === 'pending'}
+          >
+            {validationStatus === 'pending' ? 'Checking…' : 'Check'}
+          </button>
+        </div>
+        {validationMessage ? (
+          <span
+            className={classNames(
+              styles.modelValidationMessage,
+              validationStatus === 'valid'
+                ? styles.modelValidationSuccess
+                : styles.modelValidationError,
+            )}
+          >
+            {validationMessage}
+          </span>
+        ) : null}
         <select
-          id={`model-${nym.id}`}
+          id={`model-select-${nym.id}`}
           className={styles.selectInput}
           value={nym.model}
           onChange={(event) => updateField('model', event.target.value)}

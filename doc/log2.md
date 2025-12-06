@@ -1,3 +1,21 @@
+## 2025-12-??
+### Improve mobile responsiveness and controls layout
+- Keep the arcs list visible on narrow screens and adjust navigation spacing by hiding the brand label on small viewports
+- Convert the settings button to a gear icon with accessible labeling
+- Reflow OpenRouter auth controls and status banner for small screens to prevent overflow
+
+## 2025-12-??
+### Model selector UI changes
+  - Nym cards now keep per-model validation state, call the OpenRouter client via getOpenRouterModelIds, and reset
+  messaging whenever the model changes so we can highlight the text field green/red only after a check (web/src/components/
+  NymsView.tsx:53).
+  - The model picker UI now combines a free-text input, inline “Check” button, validation message, and the existing quick-
+  select dropdown so users can either type any model or choose from presets without leaving the card (web/src/components/
+  NymsView.tsx:161).
+  - Added a cached model list helper so the first validation request hits /models and subsequent checks reuse the saved list
+  (web/src/lib/openrouter/models.ts:1), plus new CSS hooks for the input row, button, and success/error styles to visualize
+  validation results (web/src/components/NymsView.module.css:104).
+
 ## 2025-11-30
 ### Scheduler fixes
 - automatic scheduling and sending of messages works
