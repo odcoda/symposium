@@ -4,6 +4,16 @@
 - token and cost counting works (checked against openrouter)
 - conversation rendering is really weird right now
 
+### Some UI changes
+  - Added inline rename + active-nym editors for the currently open arc, complete with pen-icon toggles, local draft state, store
+  updates, and safeguards that collapse one editor when the other opens so the UI stays compact (src/components/ArcsView.tsx:216-
+  541). Supporting styles cover the icon buttons, inline editor shell, chip list, and multi-select checkbox grid to keep the
+  controls tidy (src/components/ArcsView.module.css:115-263).
+  - When editing nyms, the preset model dropdown now goes blank whenever the model string doesn’t match a predefined option,
+  making it obvious that a custom value is active while still allowing users to reselect a preset quickly (src/components/
+  NymsView.tsx:53-200).
+
+
 ### Error bug fix
   - Scheduler now restores the user message to complete and clears its error details whenever a response placeholder exists,
   keeping the error banner on the assistant reply only (web/src/components/ArcScheduler.tsx:38-66).

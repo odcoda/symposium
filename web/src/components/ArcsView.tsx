@@ -4,7 +4,6 @@ import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
 import { executeChatCompletion, fetchGenerationWithRetry } from '@/lib/openrouter/executor'
 import { useAppStore } from '@/stores/app-store'
 import type {
-  Arc,
   Msg,
   Nym,
   OpenRouterChatCompletionRequest,
@@ -13,6 +12,23 @@ import type {
 
 import { MsgComposer } from './MsgComposer'
 import styles from './ArcsView.module.css'
+
+const PenIcon = () => (
+  <svg
+    className={styles.editIcon}
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    aria-hidden="true"
+  >
+    <path
+      d="M4 13.5V16h2.5l7.4-7.4-2.5-2.5L4 13.5zm9.8-7.8 1.4-1.4c.4-.4.4-1 0-1.4l-1.1-1.1c-.4-.4-1-.4-1.4 0L11.3 3.3l2.5 2.4z"
+      strokeWidth={1.3}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+)
 
 const formatTimestamp = (iso: string) => {
   const date = new Date(iso)
@@ -100,19 +116,12 @@ const getAuthorName = (
   return 'Unknown'
 }
 
-const summariseParticipants = (arc: Arc, nyms: Record<string, Nym>) => {
-  const names = arc.activeNymIds
-    .map((id) => nyms[id]?.name)
-    .filter(Boolean)
-  return names.length ? names.join(', ') : 'No nyms yet'
-}
-
 export const ArcsView = () => {
   const arcs = useAppStore((state) => state.arcs)
   const msgs = useAppStore((state) => state.msgs)
   const nyms = useAppStore((state) => state.nyms)
   const activeArcId = useAppStore((state) => state.activeArcId)
-  const { setActiveArc, createArc, createMsg, updateMsg, deleteMsg } = useAppStore(
+  const { setActiveArc, createArc, createMsg, updateMsg, deleteMsg, updateArc } = useAppStore(
     (state) => state.actions,
   )
   const msgsEndRef = useRef<HTMLDivElement | null>(null)
@@ -120,6 +129,10 @@ export const ArcsView = () => {
   const [selectedNymId, setSelectedNymId] = useState('')
   const [pendingDirectRequests, setPendingDirectRequests] = useState(0)
   const [requestError, setRequestError] = useState<string | null>(null)
+  const [isTitleEditorOpen, setIsTitleEditorOpen] = useState(false)
+  const [isActiveNymEditorOpen, setIsActiveNymEditorOpen] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [activeNymDraft, setActiveNymDraft] = useState<string[]>([])
 
   const arcList = useMemo(() => {
     return Object.values(arcs).sort((a, b) =>
@@ -155,6 +168,21 @@ export const ArcsView = () => {
   }, [activeArc, activeMsgs])
 
   useEffect(() => {
+    if (!activeArc) {
+      setIsTitleEditorOpen(false)
+      setIsActiveNymEditorOpen(false)
+      setTitleDraft('')
+      setActiveNymDraft([])
+      return
+    }
+
+    setTitleDraft(activeArc.title)
+    setActiveNymDraft(activeArc.activeNymIds)
+    setIsTitleEditorOpen(false)
+    setIsActiveNymEditorOpen(false)
+  }, [activeArc])
+
+  useEffect(() => {
     setSelectedNymId((current) => {
       if (current && nyms[current]) {
         return current
@@ -183,6 +211,65 @@ export const ArcsView = () => {
       activeNymIds: [],
     })
     setActiveArc(newArcId)
+  }
+
+  const handleArcTitleSave = () => {
+    if (!activeArc) {
+      return
+    }
+
+    const trimmedTitle = titleDraft.trim()
+    const nextTitle = trimmedTitle.length ? trimmedTitle : 'Untitled arc'
+    updateArc(activeArc.id, {
+      title: nextTitle,
+      updatedAt: new Date().toISOString(),
+    })
+    setTitleDraft(nextTitle)
+    setIsTitleEditorOpen(false)
+  }
+
+  const handleArcTitleCancel = () => {
+    if (!activeArc) {
+      setIsTitleEditorOpen(false)
+      setTitleDraft('')
+      return
+    }
+
+    setTitleDraft(activeArc.title)
+    setIsTitleEditorOpen(false)
+  }
+
+  const handleActiveNymToggle = (nymId: string) => {
+    setActiveNymDraft((current) => {
+      if (current.includes(nymId)) {
+        return current.filter((id) => id !== nymId)
+      }
+
+      return [...current, nymId]
+    })
+  }
+
+  const handleActiveNymsSave = () => {
+    if (!activeArc) {
+      return
+    }
+
+    updateArc(activeArc.id, {
+      activeNymIds: activeNymDraft,
+      updatedAt: new Date().toISOString(),
+    })
+    setIsActiveNymEditorOpen(false)
+  }
+
+  const handleActiveNymsCancel = () => {
+    if (!activeArc) {
+      setActiveNymDraft([])
+      setIsActiveNymEditorOpen(false)
+      return
+    }
+
+    setActiveNymDraft(activeArc.activeNymIds)
+    setIsActiveNymEditorOpen(false)
   }
 
   const handleDirectResponseRequest = async () => {
@@ -329,10 +416,130 @@ export const ArcsView = () => {
           <>
             <div className={styles.arcHeader}>
               <div className={styles.arcHeaderDetails}>
-                <h2>{activeArc.title}</h2>
-                <span className={styles.metadata}>
-                  {summariseParticipants(activeArc, nyms)}
-                </span>
+                <div className={styles.arcEditableRow}>
+                  <h2>{activeArc.title}</h2>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    onClick={() => {
+                      if (!activeArc) {
+                        return
+                      }
+                      setTitleDraft(activeArc.title)
+                      setIsTitleEditorOpen((isOpen) => !isOpen)
+                      if (isActiveNymEditorOpen) {
+                        setIsActiveNymEditorOpen(false)
+                      }
+                    }}
+                    aria-label="Rename arc"
+                  >
+                    <PenIcon />
+                  </button>
+                </div>
+                {isTitleEditorOpen ? (
+                  <form
+                    className={styles.inlineEditor}
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      handleArcTitleSave()
+                    }}
+                  >
+                    <input
+                      type="text"
+                      className={styles.inlineInput}
+                      value={titleDraft}
+                      onChange={(event) => setTitleDraft(event.target.value)}
+                      placeholder="Arc title"
+                      autoFocus
+                    />
+                    <div className={styles.inlineEditorActions}>
+                      <button type="submit" className={styles.inlineEditorPrimary}>
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.inlineEditorGhost}
+                        onClick={handleArcTitleCancel}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+                <div className={styles.arcEditableRow}>
+                  <div className={styles.activeNymsDisplay}>
+                    <span className={styles.metadata}>Active nyms</span>
+                    <div className={styles.activeNymChips}>
+                      {activeArc.activeNymIds
+                        .map((id) => nyms[id])
+                        .filter((nym): nym is Nym => Boolean(nym))
+                        .map((nym) => (
+                          <span key={nym.id} className={styles.nymChip}>
+                            {nym.name}
+                          </span>
+                        ))}
+                      {activeArc.activeNymIds.length === 0 ? (
+                        <span className={styles.emptyMeta}>No active nyms</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    onClick={() => {
+                      if (!activeArc) {
+                        return
+                      }
+                      setActiveNymDraft(activeArc.activeNymIds)
+                      setIsActiveNymEditorOpen((isOpen) => !isOpen)
+                      if (isTitleEditorOpen) {
+                        setIsTitleEditorOpen(false)
+                      }
+                    }}
+                    aria-label="Edit active nyms"
+                  >
+                    <PenIcon />
+                  </button>
+                </div>
+                {isActiveNymEditorOpen ? (
+                  <div className={styles.inlineEditor}>
+                    {nymList.length ? (
+                      <div className={styles.nymCheckboxList}>
+                        {nymList.map((nym) => (
+                          <label key={nym.id} className={styles.nymCheckboxItem}>
+                            <input
+                              type="checkbox"
+                              checked={activeNymDraft.includes(nym.id)}
+                              onChange={() => handleActiveNymToggle(nym.id)}
+                            />
+                            <span>{nym.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className={styles.emptyMeta}>
+                        Create nyms to add participants
+                      </span>
+                    )}
+                    <div className={styles.inlineEditorActions}>
+                      <button
+                        type="button"
+                        className={styles.inlineEditorPrimary}
+                        onClick={handleActiveNymsSave}
+                        disabled={!nymList.length}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.inlineEditorGhost}
+                        onClick={handleActiveNymsCancel}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
               {activeArcCost !== null ? (
                 <div className={styles.arcCostBadge}>

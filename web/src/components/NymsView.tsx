@@ -57,6 +57,7 @@ const NymCard = ({ nym }: { nym: Nym }) => {
     'idle',
   )
   const [validationMessage, setValidationMessage] = useState<string | null>(null)
+  const presetModelValue = MODEL_OPTIONS.includes(nym.model) ? nym.model : ''
 
   const updateField = <K extends keyof Nym>(field: K, value: Nym[K]) => {
     updateNym(nym.id, { [field]: value })
@@ -187,9 +188,10 @@ const NymCard = ({ nym }: { nym: Nym }) => {
         <select
           id={`model-select-${nym.id}`}
           className={styles.selectInput}
-          value={nym.model}
+          value={presetModelValue}
           onChange={(event) => updateField('model', event.target.value)}
         >
+          <option value="" disabled hidden />
           {MODEL_OPTIONS.map((option) => (
             <option key={option} value={option}>
               {option}
