@@ -4,6 +4,12 @@
   gap: 0.5rem;
 }
 
+.statusGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .statusDot {
   width: 8px;
   height: 8px;
@@ -37,6 +43,21 @@
   cursor: not-allowed;
 }
 
+@media (max-width: 640px) {
+  .container {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .button {
+    width: 100%;
+  }
+
+  .statusGroup {
+    padding-left: 0.1rem;
+  }
+}
+
 .banner {
   width: 100%;
   display: flex;
@@ -50,6 +71,9 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
 }
 
 .bannerSuccess {

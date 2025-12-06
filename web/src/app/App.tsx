@@ -55,7 +55,8 @@ function App() {
         <div className={styles.controls}>
           <OpenRouterAuthControls />
           <button type="button" className={styles.settingsButton} onClick={openSettings}>
-            Settings
+            <span aria-hidden="true">⚙</span>
+            <span className={styles.visuallyHidden}>Settings</span>
           </button>
         </div>
       </header>
