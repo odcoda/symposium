@@ -68,8 +68,6 @@ export const OpenRouterAuthControls = () => {
 
   return (
     <div className={styles.container}>
-      <span className={styles.statusDot} style={{ background: statusColor }} />
-      <span className={styles.statusLabel}>{statusLabel}</span>
       <button
         type="button"
         className={styles.button}
@@ -78,6 +76,10 @@ export const OpenRouterAuthControls = () => {
       >
         {isAuthorized ? 'Sign out' : 'Sign in'}
       </button>
+      <div className={styles.statusGroup}>
+        <span className={styles.statusDot} style={{ background: statusColor }} />
+        <span className={styles.statusLabel}>{statusLabel}</span>
+      </div>
       {status === 'error' && lastError ? <span className={styles.statusLabel}>{lastError}</span> : null}
     </div>
   )
