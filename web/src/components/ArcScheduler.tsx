@@ -71,6 +71,7 @@ export const ArcScheduler = () => {
   const settings = useAppStore((state) => state.scheduler.settings)
   const nymStates = useAppStore((state) => state.scheduler.nymStates)
   const nyms = useAppStore((state) => state.nyms)
+  const arcs = useAppStore((state) => state.arcs)
   const updateQueue = useAppStore((state) => state.actions.updateSchedulerQueue)
   const updateQueueItem = useAppStore((state) => state.actions.updateSchedulerRequest)
   const removeQueueItem = useAppStore((state) => state.actions.deleteSchedulerRequest)
@@ -232,6 +233,7 @@ export const ArcScheduler = () => {
     const out = scheduleNyms({
       queue,
       nyms,
+      arcs,
       nymStates,
       activeRequestIds: activeRequests.current,
       settings,
@@ -241,6 +243,7 @@ export const ArcScheduler = () => {
 
     updateQueue(out.newQueue)
   }, [
+    arcs,
     nymStates,
     nyms,
     queue,

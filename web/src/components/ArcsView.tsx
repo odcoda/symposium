@@ -146,6 +146,17 @@ export const ArcsView = () => {
     ? arcs[activeArcId]
     : arcList[0]
 
+  const activeArcNymOptions = useMemo(() => {
+    if (!activeArc) {
+      return []
+    }
+
+    return activeArc.activeNymIds
+      .map((id) => nyms[id])
+      .filter((nym): nym is Nym => Boolean(nym))
+  }, [activeArc, nyms])
+  const hasSelectableNyms = activeArcNymOptions.length > 0
+
   const activeMsgs = useMemo(() => {
     if (!activeArc) {
       return []
@@ -184,17 +195,14 @@ export const ArcsView = () => {
 
   useEffect(() => {
     setSelectedNymId((current) => {
-      if (current && nyms[current]) {
+      const isStillValid = current && activeArcNymOptions.some((nym) => nym.id === current)
+      if (isStillValid) {
         return current
       }
 
-      const fallback =
-        activeArc?.activeNymIds.find((id) => nyms[id]) ??
-        nymList[0]?.id ??
-        ''
-      return fallback
+      return activeArcNymOptions[0]?.id ?? ''
     })
-  }, [activeArc, nyms, nymList])
+  }, [activeArcNymOptions])
 
   useEffect(() => {
     if (!msgsEndRef.current) {
@@ -602,9 +610,9 @@ export const ArcsView = () => {
                   className={styles.directRequestSelect}
                   value={selectedNymId}
                   onChange={(event) => setSelectedNymId(event.target.value)}
-                  disabled={nymList.length === 0}
+                  disabled={!hasSelectableNyms}
                 >
-                  {nymList.map((nym) => (
+                  {activeArcNymOptions.map((nym) => (
                     <option key={nym.id} value={nym.id}>
                       {nym.name}
                     </option>
@@ -615,7 +623,7 @@ export const ArcsView = () => {
                   className={styles.directRequestButton}
                   onClick={handleDirectResponseRequest}
                   disabled={
-                    !selectedNymId || !activeArc || nymList.length === 0
+                    !selectedNymId || !activeArc || !hasSelectableNyms
                   }
                 >
                   {pendingDirectRequests > 0

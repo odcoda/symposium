@@ -5,7 +5,7 @@ import {
   applySchedulerMsgUpdate,
   createNymSchedulerState,
 } from '@/stores/app-store'
-import type { AppView, Msg, Nym, SchedulerRequest, SchedulerSettings } from '@/types'
+import type { AppView, Arc, Msg, Nym, SchedulerRequest, SchedulerSettings } from '@/types'
 import type { NymSchedulerStateMap } from '@/types/scheduler'
 
 vi.mock('@/lib/scheduler/math', async () => {
@@ -68,6 +68,16 @@ describe('arc scheduling algorithm', () => {
       politenessDecayMultiplier: 0.8,
     }
 
+    const baseArc: Arc = {
+      id: 'arc',
+      title: 'Arc',
+      participantIds: ['user'],
+      msgIds: [],
+      activeNymIds: ['alpha', 'beta'],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
     const createQueue = (): SchedulerRequest[] => [
       {
         id: 'user-request',
@@ -81,7 +91,9 @@ describe('arc scheduling algorithm', () => {
 
     const baseState = {
       nyms,
-      arcs: {},
+      arcs: {
+        [baseArc.id]: baseArc,
+      },
       msgs: {},
       activeArcId: null,
       scheduler: {
@@ -110,6 +122,7 @@ describe('arc scheduling algorithm', () => {
       const { requests } = scheduleNyms({
         queue: createQueue(),
         nyms: state.nyms,
+        arcs: state.arcs,
         nymStates: state.scheduler.nymStates,
         activeRequestIds: new Set(),
         settings: state.scheduler.settings,
@@ -203,5 +216,107 @@ describe('arc scheduling algorithm', () => {
     recorded.forEach(({ selection }, index) => {
       expect(selection).toBe(expectedSelections[index])
     })
+  })
+
+  it('only schedules nyms that are active on the arc', () => {
+    const timestamp = '2024-01-01T00:00:00.000Z'
+    const nyms: Record<string, Nym> = {
+      alpha: {
+        id: 'alpha',
+        name: 'Alpha',
+        description: '',
+        color: '#ff0000',
+        model: 'test-model',
+        prompt: 'Test alpha',
+        temperature: 0.8,
+        eagerness: 0.6,
+        politenessPenalty: 0.3,
+        politenessHalfLife: 2,
+        mentionBoost: 0.5,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      beta: {
+        id: 'beta',
+        name: 'Beta',
+        description: '',
+        color: '#00ff00',
+        model: 'test-model',
+        prompt: 'Test beta',
+        temperature: 0.8,
+        eagerness: 0.4,
+        politenessPenalty: 0.2,
+        politenessHalfLife: 4,
+        mentionBoost: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    }
+
+    const schedulerSettings: SchedulerSettings = {
+      maxConcurrent: 2,
+      responseDelayMs: 0,
+      responsePacing: 'steady',
+      autoStart: true,
+      selectionTemperature: 1,
+      politenessDecayMultiplier: 0.8,
+    }
+
+    const arcs: Record<string, Arc> = {
+      arcActive: {
+        id: 'arcActive',
+        title: 'Arc Active',
+        participantIds: ['user'],
+        msgIds: [],
+        activeNymIds: ['alpha'],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      arcInactive: {
+        id: 'arcInactive',
+        title: 'Arc Inactive',
+        participantIds: ['user'],
+        msgIds: [],
+        activeNymIds: [],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    }
+
+    const queue: SchedulerRequest[] = [
+      {
+        id: 'req-1',
+        arcId: 'arcActive',
+        authorId: 'user',
+        msgId: 'msg-1',
+        enqueuedAt: 0,
+        status: 'queued',
+      },
+      {
+        id: 'req-2',
+        arcId: 'arcInactive',
+        authorId: 'user',
+        msgId: 'msg-2',
+        enqueuedAt: 1,
+        status: 'queued',
+      },
+    ]
+
+    const { requests, newQueue } = scheduleNyms({
+      queue,
+      nyms,
+      arcs,
+      nymStates: {
+        alpha: createNymSchedulerState(0),
+        beta: createNymSchedulerState(0),
+      },
+      activeRequestIds: new Set(),
+      settings: schedulerSettings,
+    })
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.authorId).toBe('alpha')
+    expect(newQueue).toHaveLength(queue.length)
+    expect(newQueue.map((item) => item.id)).toContain('req-2')
   })
 })
