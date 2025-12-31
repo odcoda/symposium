@@ -3,11 +3,11 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useOpenRouterClient } from '@/hooks/useOpenRouterClient'
 import { executeChatCompletion, fetchGenerationWithRetry } from '@/lib/openrouter/executor'
 import { scheduleNyms } from '@/lib/scheduler'
+import { makePrompt } from '@/lib/prompts'
 import { useAppStore } from '@/stores/app-store'
 import type {
   Msg,
   OpenRouterChatCompletionRequest,
-  OpenRouterChatMsg,
   SchedulerRequest,
 } from '@/types'
 
@@ -68,6 +68,7 @@ const failRequest = (request: SchedulerRequest, error: string, responseMsgId?: s
 
 export const ArcScheduler = () => {
   const queue = useAppStore((state) => state.scheduler.queue)
+  const queueRequest = useAppStore((state) => state.actions.createSchedulerRequest)
   const settings = useAppStore((state) => state.scheduler.settings)
   const nymStates = useAppStore((state) => state.scheduler.nymStates)
   const nyms = useAppStore((state) => state.nyms)
@@ -88,13 +89,14 @@ export const ArcScheduler = () => {
         updateQueueItem(request.id, { status: 'in-flight', error: undefined })
         markMsgStreaming(request.msgId)
 
+        const nyms = useAppStore.getState().nyms
         const msgs = buildPromptMsgs(request.arcId, request.msgId)
         if (!msgs) {
           failRequest(request, 'Arc not found')
           return
         }
 
-        const nym = useAppStore.getState().nyms[request.authorId]
+        const nym = nyms[request.authorId]
         if (!nym) {
           failRequest(request, 'Nym not found')
           return
@@ -105,34 +107,9 @@ export const ArcScheduler = () => {
           failRequest(request, 'Arc not found')
           return
         }
-
-        const promptMsgs: OpenRouterChatMsg[] = msgs.map((msg) => {
-          const nyms = useAppStore.getState().nyms
-          if (msg.authorRole === 'user') {
-            return { role: 'user', content: msg.content }
-          }
-
-          if (msg.authorRole === 'assistant') {
-            return {
-              role: 'assistant',
-              content: msg.content,
-              name: nyms[msg.authorId ?? '']?.name ?? undefined,
-            }
-          }
-
-          return { role: 'system', content: msg.content }
-        })
-
-        console.log("[scheduler] messages: ", promptMsgs)
         const requestBody: OpenRouterChatCompletionRequest = {
           model: nym.model,
-          messages: [
-            {
-              role: 'system',
-              content: nym.prompt || 'You are a helpful collaborator.',
-            },
-            ...promptMsgs,
-          ],
+          messages: makePrompt(nym, nyms, msgs),
           temperature: nym.temperature,
           metadata: {
             arcId: arc.id,
@@ -210,6 +187,15 @@ export const ArcScheduler = () => {
           updatedAt: new Date().toISOString(),
         })
         removeQueueItem(request.id)
+
+        const req = {
+          arcId: arc.id,
+          authorId: nym.id,
+          msgId: responseMsgId,
+        }
+        console.log('[scheduling] queueing request after nym message completion ', req)
+        queueRequest(req)
+
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown scheduler error'
         const queueItem = useAppStore
