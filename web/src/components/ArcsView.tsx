@@ -44,8 +44,8 @@ const formatTimestamp = (iso: string) => {
   })
 }
 
-const sumTokens = (...values: Array<number | undefined>) =>
-  values.reduce((total, value) => (typeof value === 'number' ? total + value : total), 0)
+const sumTokens = (...values: Array<number | undefined>): number =>
+  values.reduce<number>((total, value) => (typeof value === 'number' ? total + value : total), 0)
 
 const getTokenCount = (generation?: Msg['generation']) => {
   if (!generation) {
